@@ -10,6 +10,7 @@ import '../../domain/models/intervention.dart';
 import '../providers/dispatch_controller.dart';
 import '../widgets/dispatch_ui.dart';
 import 'intervention_detail_screen.dart';
+import 'surveillance_cardiaque_screen.dart';
 import 'tabs/interventions_tab.dart';
 
 /// Vue patient : bouton SOS (position GPS → intervention critique
@@ -142,7 +143,16 @@ class _SosScreenState extends State<SosScreen> with SingleTickerProviderStateMix
                 ),
                 const SizedBox(height: 40),
                 Center(child: _boutonSos()),
-                const SizedBox(height: 40),
+                const SizedBox(height: 32),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.push<void>(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SurveillanceCardiaqueScreen()),
+                  ),
+                  icon: const Icon(Icons.watch_outlined),
+                  label: const Text('Surveiller mon rythme cardiaque (montre)'),
+                ),
+                const SizedBox(height: 24),
                 const Text(
                   'Appel direct SAMU : 190',
                   textAlign: TextAlign.center,

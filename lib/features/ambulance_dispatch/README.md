@@ -46,13 +46,29 @@ Sans réseau, OSRM bascule sur une estimation Haversine (ligne droite × 1,3 à 
   missions par ambulance, temps par gravité, disponibilité de la flotte, coût maintenance.
 - **Heatmap** : interventions regroupées par zones de ~600 m.
 
+## Montre connectée (Mibro C2) → alerte → ambulance
+
+Chaîne : montre → Mibro Fit → Google Fit → **Health Connect** → VitalWatch
+(package `health`, Android uniquement, vrai téléphone).
+
+- `data/api/montre_cardiaque_service.dart` : autorisation + lecture du rythme (toutes les minutes).
+- `domain/surveillance_cardiaque.dart` : seuils (45–120 bpm par défaut), alerte après
+  2 mesures anormales de suite, pause de 15 min après « Je vais bien »,
+  gravité critique si ≥ 150 ou ≤ 40 bpm.
+- `presentation/screens/surveillance_cardiaque_screen.dart` : courbe 3 h, seuils réglables,
+  « Ça va ? » 30 s puis `creerDepuisAlerte` (position GPS) → dispatch automatique.
+  Mode démo : « Simuler 2 mesures ».
+
+Accès : icône ❤ dans la barre du module (personnel) ou bouton sous le SOS (patient).
+
 ## Intégration module 2 (alertes vitales)
 
 ```dart
-await DispatchController.instance.manager.creerDepuisAlerte(
-  alerteId: alerte.id,
+await DispatchController.instance.creerDepuisAlerte(
+  alerteId: alerte.id, // facultatif
   patientId: patient.id,
   position: LatLng(lat, lng),
+  gravite: Gravite.critique,
 );
 ```
 
@@ -64,5 +80,6 @@ ou suit la position GPS réelle quand l'ambulancier active « Partager ma positi
 
 ## Tests
 
-`flutter test test/ambulance_dispatch_test.dart` (Haversine, classement du dispatch,
-immatriculation, hôpital le plus proche).
+`flutter test test/ambulance_dispatch_test.dart test/surveillance_cardiaque_test.dart`
+(Haversine, classement du dispatch, immatriculation, hôpital le plus proche,
+règles d'alerte cardiaque).

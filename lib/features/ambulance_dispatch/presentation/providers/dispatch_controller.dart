@@ -298,6 +298,23 @@ class DispatchController extends ChangeNotifier {
     return r;
   }
 
+  /// Alerte vitale (montre) → intervention + dispatch automatique.
+  Future<ResultatDispatch> creerDepuisAlerte({
+    required int patientId,
+    required LatLng position,
+    required Gravite gravite,
+    int? alerteId,
+  }) async {
+    final ResultatDispatch r = await manager.creerDepuisAlerte(
+      alerteId: alerteId,
+      patientId: patientId,
+      position: position,
+      gravite: gravite,
+    );
+    await rafraichir();
+    return r;
+  }
+
   Future<ResultatDispatch> declencherSos(LatLng position, {int? patientId}) async {
     final ResultatDispatch r =
         await manager.declencherSos(position: position, patientId: patientId);

@@ -386,10 +386,10 @@ class DispatchManager {
     );
   }
 
-  /// Point d'entrée pour le module 2 (alertes vitales) : une alerte
-  /// d'urgence crée automatiquement l'intervention et déclenche le dispatch.
+  /// Point d'entrée des alertes vitales (module 2, montre connectée) :
+  /// l'alerte crée automatiquement l'intervention et déclenche le dispatch.
   Future<ResultatDispatch> creerDepuisAlerte({
-    required int alerteId,
+    int? alerteId,
     required int patientId,
     required LatLng position,
     String? adresse,

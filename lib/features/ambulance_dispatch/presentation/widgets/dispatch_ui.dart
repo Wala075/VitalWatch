@@ -347,7 +347,7 @@ class Section extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (a != null) a,
+                ?a,
               ],
             ),
             const SizedBox(height: 14),

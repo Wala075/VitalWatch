@@ -7,6 +7,7 @@ import '../../domain/ambulance_permissions.dart';
 import '../providers/dispatch_controller.dart';
 import '../widgets/dispatch_ui.dart';
 import 'sos_screen.dart';
+import 'surveillance_cardiaque_screen.dart';
 import 'tabs/carte_tab.dart';
 import 'tabs/equipages_tab.dart';
 import 'tabs/flotte_tab.dart';
@@ -97,7 +98,17 @@ class _AmbulanceDispatchScreenState extends State<AmbulanceDispatchScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Ambulances & Interventions'),
-          actions: [_menuSimulation()],
+          actions: [
+            IconButton(
+              tooltip: 'Surveillance cardiaque (montre)',
+              icon: const Icon(Icons.monitor_heart_outlined, color: AppColors.danger),
+              onPressed: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(builder: (_) => const SurveillanceCardiaqueScreen()),
+              ),
+            ),
+            _menuSimulation(),
+          ],
           bottom: TabBar(
             tabs: onglets,
             isScrollable: onglets.length > 4,
