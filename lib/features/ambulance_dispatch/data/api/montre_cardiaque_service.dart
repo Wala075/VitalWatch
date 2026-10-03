@@ -76,7 +76,7 @@ class MontreCardiaqueService {
         res.add(MesureCardiaque(
           bpm: v.numericValue.round(),
           date: p.dateTo,
-          source: p.sourceName,
+          source: p.sourceName == 'com.xiaoxun.xunoversea.mibrofit' ? 'Mibro Fit' : p.sourceName,
         ));
       }
     }
