@@ -42,6 +42,12 @@ dependencies:
   # Envoi des identifiants par mail (API REST EmailJS)
   http: ^1.6.0
 
+  # Module 3 : Ambulances & Interventions
+  # Carte OpenStreetMap, coordonnées GPS, position de l'appareil
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+  geolocator: ^14.1.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
