@@ -1,45 +1,90 @@
 enum Role { admin, medecin, infirmier, ambulancier, patient }
 
+/// Compte de connexion. [refId] pointe vers le médecin ou le patient lié.
 class Utilisateur {
-  final String id;
+  final int? id;
+  final String email;
+  final String motDePasseHash;
+  final Role role;
+  final int? refId;
   final String nom;
   final String prenom;
-  final String email;
-  final String telephone;
-  final Role role;
+  final bool actif;
 
   const Utilisateur({
-    required this.id,
-    required this.nom,
-    required this.prenom,
+    this.id,
     required this.email,
-    required this.telephone,
+    required this.motDePasseHash,
     required this.role,
+    this.refId,
+    this.nom = '',
+    this.prenom = '',
+    this.actif = true,
   });
 
-  String get nomComplet => '$prenom $nom';
+  String get nomComplet => '$prenom $nom'.trim();
 
-  factory Utilisateur.fromMap(String id, Map<String, dynamic> map) {
+  factory Utilisateur.fromMap(Map<String, Object?> map) {
+    final Object? role = map['role'];
     return Utilisateur(
-      id: id,
-      nom: map['nom'] ?? '',
-      prenom: map['prenom'] ?? '',
-      email: map['email'] ?? '',
-      telephone: map['telephone'] ?? '',
+      id: map['id'] as int?,
+      email: map['email'] as String,
+      motDePasseHash: map['mot_de_passe_hash'] as String,
       role: Role.values.firstWhere(
-        (r) => r.name == map['role'],
+        (r) => r.name == role,
         orElse: () => Role.patient,
       ),
+      refId: map['ref_id'] as int?,
+      nom: (map['nom'] as String?) ?? '',
+      prenom: (map['prenom'] as String?) ?? '',
+      actif: ((map['actif'] as int?) ?? 1) == 1,
     );
   }
 
-  Map<String, dynamic> toMap() {
+  Map<String, Object?> toMap() {
     return {
+      'email': email,
+      'mot_de_passe_hash': motDePasseHash,
+      'role': role.name,
+      'ref_id': refId,
       'nom': nom,
       'prenom': prenom,
-      'email': email,
-      'telephone': telephone,
-      'role': role.name,
+      'actif': actif ? 1 : 0,
     };
   }
+}
+
+extension RoleLibelle on Role {
+  String get libelle {
+    switch (this) {
+      case Role.admin:
+        return 'Administrateur';
+      case Role.medecin:
+        return 'Médecin';
+      case Role.infirmier:
+        return 'Infirmier';
+      case Role.ambulancier:
+        return 'Ambulancier';
+      case Role.patient:
+        return 'Patient';
+    }
+  }
+}
+
+/// Rôles et permissions par profil.
+extension RolePermissions on Role {
+  /// Accès au module Services & Personnel.
+  bool get accesPersonnel =>
+      this == Role.admin || this == Role.medecin || this == Role.infirmier;
+
+  bool get gererServices => this == Role.admin;
+
+  bool get gererMedecins => this == Role.admin;
+
+  bool get gererPatients =>
+      this == Role.admin || this == Role.medecin || this == Role.infirmier;
+
+  bool get supprimerPatients => this == Role.admin;
+
+  bool get voirStats => this == Role.admin || this == Role.medecin;
 }

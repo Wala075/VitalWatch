@@ -1,72 +1,88 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/config/app_constants.dart';
-import '../../../../core/routing/app_routes.dart';
+import '../../../../models/utilisateur.dart';
+import '../../../../shared_providers/session.dart';
+import '../../data/demo_store.dart';
+import '../widgets/app_background.dart';
+import '../widgets/floating_nav_bar.dart';
+import 'tabs/doctors_tab.dart';
+import 'tabs/gestion_tab.dart';
+import 'tabs/health_tab.dart';
+import 'tabs/home_tab.dart';
+import 'tabs/schedule_tab.dart';
 
-class HomeScreen extends StatelessWidget {
+/// Écran principal : Accueil, Médecins, Planning, Santé
+/// (+ Gestion pour le personnel) avec barre de navigation flottante.
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  static const List<_ModuleItem> _modules = [
-    _ModuleItem('Services & Personnel', Icons.badge, AppRoutes.staff),
-    _ModuleItem('Patients & Suivi vital', Icons.monitor_heart,
-        AppRoutes.patientMonitoring),
-    _ModuleItem('Ambulances & Interventions', Icons.local_hospital,
-        AppRoutes.ambulanceDispatch),
-    _ModuleItem('Rendez-vous & Téléconsultation', Icons.event,
-        AppRoutes.appointments),
-    _ModuleItem('Ordonnances & Traitements', Icons.medication,
-        AppRoutes.prescriptions),
-  ];
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final DemoStore _store = DemoStore.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _store.onglet = 0;
+    _store.addListener(_rafraichir);
+  }
+
+  void _rafraichir() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _store.removeListener(_rafraichir);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(AppConstants.appName),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.login),
-            tooltip: 'Connexion',
-            onPressed: () => Navigator.pushNamed(context, AppRoutes.login),
-          ),
-        ],
+    final Role? role = Session.utilisateur?.role;
+    final bool personnel = role != null && role != Role.patient;
+
+    final List<Widget> pages = [
+      const HomeTab(),
+      const DoctorsTab(),
+      const ScheduleTab(),
+      const HealthTab(),
+      if (personnel) const GestionTab(),
+    ];
+    final List<NavItem> items = [
+      const NavItem(Icons.home_rounded, 'Accueil'),
+      const NavItem(Icons.medical_services_rounded, 'Médecins'),
+      NavItem(
+        Icons.calendar_month_rounded,
+        'Planning',
+        badge: _store.aVenir.length,
       ),
-      body: GridView.count(
-        crossAxisCount: 2,
-        padding: const EdgeInsets.all(16),
-        mainAxisSpacing: 16,
-        crossAxisSpacing: 16,
-        children: [
-          for (final _ModuleItem m in _modules)
-            Card(
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () => Navigator.pushNamed(context, m.route),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(m.icon,
-                          size: 48,
-                          color: Theme.of(context).colorScheme.primary),
-                      const SizedBox(height: 12),
-                      Text(m.label, textAlign: TextAlign.center),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
+      const NavItem(Icons.monitor_heart_rounded, 'Santé'),
+      if (personnel) const NavItem(Icons.dashboard_customize_rounded, 'Gestion'),
+    ];
+    final int index = _store.onglet < pages.length ? _store.onglet : 0;
+
+    return Scaffold(
+      extendBody: true,
+      body: AppBackground(
+        child: IndexedStack(
+          index: index,
+          children: [
+            for (int i = 0; i < pages.length; i++)
+              TickerMode(enabled: i == index, child: pages[i]),
+          ],
+        ),
+      ),
+      bottomNavigationBar: FloatingNavBar(
+        items: items,
+        index: index,
+        onTap: (int i) => _store.allerA(i),
       ),
     );
   }
-}
-
-class _ModuleItem {
-  const _ModuleItem(this.label, this.icon, this.route);
-
-  final String label;
-  final IconData icon;
-  final String route;
 }

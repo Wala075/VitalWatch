@@ -1,23 +1,39 @@
 class Patient {
-  final String id;
-  final String cin;
+  static const List<String> groupesSanguins = [
+    'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-',
+  ];
+
+  static const Map<String, String> sexes = {'M': 'Homme', 'F': 'Femme'};
+
+  final int? id;
   final String nom;
   final String prenom;
+  final String cin;
   final DateTime dateNaissance;
+  final String sexe;
   final String telephone;
   final String adresse;
   final String? groupeSanguin;
-  final String? medecinId;
+  final String? email;
+  final String? contactUrgenceNom;
+  final String? contactUrgenceTel;
+  final int? serviceId;
+  final int? medecinId;
 
   const Patient({
-    required this.id,
-    required this.cin,
+    this.id,
     required this.nom,
     required this.prenom,
+    required this.cin,
     required this.dateNaissance,
+    required this.sexe,
     required this.telephone,
-    required this.adresse,
+    this.adresse = '',
     this.groupeSanguin,
+    this.email,
+    this.contactUrgenceNom,
+    this.contactUrgenceTel,
+    this.serviceId,
     this.medecinId,
   });
 
@@ -33,31 +49,61 @@ class Patient {
     return a;
   }
 
-  factory Patient.fromMap(String id, Map<String, dynamic> map) {
+  /// Copie avec un nouvel id et/ou un médecin affecté.
+  Patient copyWith({int? id, int? medecinId}) {
     return Patient(
-      id: id,
-      cin: map['cin'] ?? '',
-      nom: map['nom'] ?? '',
-      prenom: map['prenom'] ?? '',
-      dateNaissance:
-          DateTime.tryParse(map['dateNaissance'] ?? '') ?? DateTime(2000),
-      telephone: map['telephone'] ?? '',
-      adresse: map['adresse'] ?? '',
-      groupeSanguin: map['groupeSanguin'],
-      medecinId: map['medecinId'],
+      id: id ?? this.id,
+      nom: nom,
+      prenom: prenom,
+      cin: cin,
+      dateNaissance: dateNaissance,
+      sexe: sexe,
+      telephone: telephone,
+      adresse: adresse,
+      groupeSanguin: groupeSanguin,
+      email: email,
+      contactUrgenceNom: contactUrgenceNom,
+      contactUrgenceTel: contactUrgenceTel,
+      serviceId: serviceId,
+      medecinId: medecinId ?? this.medecinId,
     );
   }
 
-  Map<String, dynamic> toMap() {
+  factory Patient.fromMap(Map<String, Object?> map) {
+    return Patient(
+      id: map['id'] as int?,
+      nom: map['nom'] as String,
+      prenom: map['prenom'] as String,
+      cin: map['cin'] as String,
+      dateNaissance: DateTime.parse(map['date_naissance'] as String),
+      sexe: (map['sexe'] as String?) ?? 'M',
+      telephone: map['telephone'] as String,
+      adresse: (map['adresse'] as String?) ?? '',
+      groupeSanguin: map['groupe_sanguin'] as String?,
+      email: map['email'] as String?,
+      contactUrgenceNom: map['contact_urgence_nom'] as String?,
+      contactUrgenceTel: map['contact_urgence_tel'] as String?,
+      serviceId: map['service_id'] as int?,
+      medecinId: map['medecin_id'] as int?,
+    );
+  }
+
+  Map<String, Object?> toMap() {
+    final String d = dateNaissance.toIso8601String().substring(0, 10);
     return {
-      'cin': cin,
       'nom': nom,
       'prenom': prenom,
-      'dateNaissance': dateNaissance.toIso8601String(),
+      'cin': cin,
+      'date_naissance': d,
+      'sexe': sexe,
       'telephone': telephone,
       'adresse': adresse,
-      'groupeSanguin': groupeSanguin,
-      'medecinId': medecinId,
+      'groupe_sanguin': groupeSanguin,
+      'email': email,
+      'contact_urgence_nom': contactUrgenceNom,
+      'contact_urgence_tel': contactUrgenceTel,
+      'service_id': serviceId,
+      'medecin_id': medecinId,
     };
   }
 }

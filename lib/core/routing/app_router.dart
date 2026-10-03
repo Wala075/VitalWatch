@@ -4,6 +4,7 @@ import '../../features/ambulance_dispatch/presentation/screens/ambulance_dispatc
 import '../../features/appointments/presentation/screens/appointments_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
+import '../../features/home/presentation/screens/splash_screen.dart';
 import '../../features/patient_monitoring/presentation/screens/patient_monitoring_screen.dart';
 import '../../features/prescriptions/presentation/screens/prescriptions_screen.dart';
 import '../../features/staff_management/presentation/screens/staff_management_screen.dart';
@@ -16,6 +17,9 @@ class AppRouter {
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     Widget page;
     switch (settings.name) {
+      case AppRoutes.splash:
+        page = const SplashScreen();
+        break;
       case AppRoutes.home:
         page = const HomeScreen();
         break;
