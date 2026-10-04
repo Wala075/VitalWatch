@@ -9,7 +9,7 @@ import '../../../../core/widgets/app_dropdown_field.dart';
 import '../../../../models/patient.dart';
 import '../../../../models/utilisateur.dart';
 import '../../../../shared_providers/session.dart';
-import '../../data/api/montre_cardiaque_service.dart';
+import '../../data/api/montre_ble_service.dart';
 import '../../data/patient_lookup.dart';
 import '../../domain/dispatch_manager.dart';
 import '../../domain/dispatch_models.dart';
@@ -19,8 +19,8 @@ import '../widgets/dispatch_ui.dart';
 import 'intervention_detail_screen.dart';
 
 /// Surveillance du rythme cardiaque de la montre connectée :
-/// lecture Health Connect toutes les minutes, seuils, confirmation
-/// « Ça va ? » puis envoi automatique d'une ambulance.
+/// lecture Bluetooth directe de la Mibro C2 toutes les minutes, seuils,
+/// confirmation « Ça va ? » puis envoi automatique d'une ambulance.
 class SurveillanceCardiaqueScreen extends StatefulWidget {
   const SurveillanceCardiaqueScreen({super.key});
 
@@ -32,12 +32,12 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
   static const Duration _frequence = Duration(minutes: 1);
   static const Duration _periode = Duration(hours: 3);
 
-  final MontreCardiaqueService _montre = MontreCardiaqueService();
+  final MontreBleService _montre = MontreBleService();
   final AnalyseurCardiaque _analyseur = AnalyseurCardiaque();
   final PatientLookup _patients = PatientLookup();
   final DispatchController _ctrl = DispatchController.instance;
 
-  AccesSante? _acces;
+  EtatMontre? _etatMontre;
   List<MesureCardiaque> _mesures = [];
   List<Patient> _listePatients = [];
   int? _patientId;
@@ -61,55 +61,46 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
   @override
   void dispose() {
     _minuterie?.cancel();
+    _montre.deconnecter();
     super.dispose();
   }
 
   Future<void> _initialiser() async {
     final List<Patient> patients = await _patients.lister();
-    final AccesSante acces = await _montre.etat();
     if (!mounted) {
       return;
     }
     setState(() {
       _listePatients = patients;
-      _acces = acces;
       _patientId = _estPatient
           ? Session.utilisateur?.refId
           : (patients.isEmpty ? null : patients.first.id);
     });
-    if (acces == AccesSante.autorise) {
-      await _lire(premiere: true);
-    }
+    await _connecter();
     _minuterie = Timer.periodic(_frequence, (_) => _lire());
   }
 
-  Future<void> _autoriser() async {
-    try {
-      if (_acces == AccesSante.aInstaller) {
-        await _montre.installer();
-        return;
-      }
-      await _montre.autoriser();
-      final AccesSante acces = await _montre.etat();
-      if (!mounted) {
-        return;
-      }
-      setState(() => _acces = acces);
-      if (acces == AccesSante.autorise) {
-        await _lire(premiere: true);
-      }
-    } catch (e) {
-      if (mounted) {
-        DispatchUi.snack(context, 'Autorisation impossible : $e', erreur: true);
-      }
+  /// Cherche la montre (déjà connectée à Mibro Fit, appairée ou par scan)
+  /// et s'y connecte en Bluetooth.
+  Future<void> _connecter() async {
+    setState(() => _etatMontre = null);
+    final EtatMontre etat = await _montre.connecter();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _etatMontre = etat);
+    if (etat == EtatMontre.connectee) {
+      await _lire(premiere: true);
     }
   }
 
-  /// Lit Health Connect et analyse les nouvelles mesures.
+  /// Lit les relevés de la montre et analyse les nouvelles mesures.
   /// [premiere] : l'historique déjà présent n'est pas analysé (pas d'alerte
   /// sur des valeurs anciennes), seule la dernière mesure sert de référence.
   Future<void> _lire({bool premiere = false}) async {
-    if (_lecture || _acces != AccesSante.autorise) {
+    // Montre déconnectée : mesures() tente une reconnexion.
+    if (_lecture ||
+        (_etatMontre != EtatMontre.connectee && _etatMontre != EtatMontre.deconnectee)) {
       return;
     }
     setState(() => _lecture = true);
@@ -128,6 +119,7 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
         _mesures = [...res, ...simulees]
           ..sort((MesureCardiaque a, MesureCardiaque b) => a.date.compareTo(b.date));
         _derniereLecture = DateTime.now();
+        _etatMontre = _montre.etat;
         _erreur = null;
       });
       if (premiere) {
@@ -145,7 +137,10 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _erreur = 'Lecture Health Connect impossible : $e');
+        setState(() {
+          _etatMontre = _montre.etat;
+          _erreur = 'Lecture de la montre impossible : $e';
+        });
       }
     } finally {
       if (mounted) {
@@ -388,14 +383,16 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
   }
 
   Widget _connexion() {
-    final AccesSante? acces = _acces;
-    final bool ok = acces == AccesSante.autorise;
+    final EtatMontre? etat = _etatMontre;
+    final bool ok = etat == EtatMontre.connectee;
     final DateTime? lu = _derniereLecture;
+    final int? batterie = _montre.batterie;
+    final bool batterieFaible = batterie != null && batterie <= 15 && !_montre.enCharge;
 
     return Section(
-      titre: 'Montre (Mibro C2 → Health Connect)',
+      titre: 'Montre Mibro C2 (Bluetooth)',
       icone: Icons.watch_outlined,
-      action: acces == null
+      action: etat == null
           ? const SizedBox(
               width: 18,
               height: 18,
@@ -409,27 +406,39 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
       children: [
         Info(
           icone: Icons.info_outline,
-          texte: acces?.libelle ?? 'Vérification de Health Connect...',
+          texte: etat == null
+              ? 'Recherche de la montre...'
+              : (ok ? '${etat.libelle} (${_montre.nomMontre})' : etat.libelle),
         ),
         if (ok && lu != null)
           Info(
             icone: Icons.schedule,
             texte: 'Dernière lecture ${DispatchUi.heure(lu)} · toutes les minutes',
           ),
-        if (acces == AccesSante.nonAutorise || acces == AccesSante.aInstaller)
-          FilledButton.icon(
-            onPressed: _autoriser,
-            icon: const Icon(Icons.health_and_safety_outlined),
-            label: Text(
-              acces == AccesSante.aInstaller
-                  ? 'Installer Health Connect'
-                  : "Autoriser l'accès au rythme cardiaque",
-            ),
+        if (batterieFaible)
+          Info(
+            icone: Icons.battery_alert,
+            texte: 'Batterie faible ($batterie %) : recharge la montre, '
+                'sinon la surveillance s\'arrête',
+            couleur: AppColors.danger,
           ),
-        if (acces == AccesSante.indisponible)
+        if (ok) _TableauMontre(montre: _montre),
+        if (ok)
+          const Info(
+            icone: Icons.timer_outlined,
+            texte: 'Mesure automatique : à activer dans Mibro Fit '
+                '(surveillance continue du rythme cardiaque)',
+          ),
+        if (etat != null && !ok && etat != EtatMontre.indisponible)
+          FilledButton.icon(
+            onPressed: _connecter,
+            icon: const Icon(Icons.bluetooth_searching),
+            label: const Text('Connecter la montre'),
+          ),
+        if (etat == EtatMontre.indisponible)
           const Info(
             icone: Icons.phone_android,
-            texte: 'Lancez l\'app sur un vrai téléphone Android avec Health Connect. '
+            texte: 'Lancez l\'app sur un vrai téléphone Android avec Bluetooth. '
                 'Le mode démo reste utilisable.',
           ),
       ],
@@ -499,7 +508,7 @@ class _CarteRythme extends StatelessWidget {
           Text(
             m == null
                 ? 'Aucune mesure sur les 3 dernières heures'
-                : '${DispatchUi.ilYa(m.date)} · ${m.simulee ? 'simulation' : (m.source.isEmpty ? 'Health Connect' : m.source)}'
+                : '${DispatchUi.ilYa(m.date)} · ${m.simulee ? 'simulation' : (m.source.isEmpty ? 'montre' : m.source)}'
                     '${anomalies > 0 ? ' · $anomalies mesure(s) anormale(s) de suite' : ''}',
             style: const TextStyle(color: Colors.white60, fontSize: 12.5),
           ),
@@ -684,6 +693,238 @@ class _DialogueAlerteState extends State<_DialogueAlerte> {
           child: const Text('Envoyer maintenant'),
         ),
       ],
+    );
+  }
+}
+
+/// Tableau de bord de la montre : batterie, signal, activité, rythme du jour.
+class _TableauMontre extends StatelessWidget {
+  const _TableauMontre({required this.montre});
+
+  final MontreBleService montre;
+
+  @override
+  Widget build(BuildContext context) {
+    final int? batterie = montre.batterie;
+    final int? signal = montre.signal;
+    final DateTime? synchro = montre.derniereSynchro;
+
+    // Rythme du jour (relevés réels de la montre)
+    final List<MesureCardiaque> jour = montre.relevesAujourdhui;
+    String rythme = '—';
+    String detailRythme = 'Aucun relevé aujourd\'hui';
+    if (jour.isNotEmpty) {
+      int min = jour.first.bpm;
+      int max = jour.first.bpm;
+      int somme = 0;
+      for (final MesureCardiaque m in jour) {
+        min = math.min(min, m.bpm);
+        max = math.max(max, m.bpm);
+        somme += m.bpm;
+      }
+      rythme = '${(somme / jour.length).round()} bpm';
+      detailRythme = 'min $min · max $max · ${jour.length} relevé(s)';
+    }
+
+    final List<String> infos = [];
+    final String? modele = montre.modele;
+    final String? firmware = montre.firmware;
+    if (modele != null) {
+      infos.add(modele);
+    }
+    if (firmware != null) {
+      infos.add('v$firmware');
+    }
+
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.75,
+      children: [
+        _TuileMontre(
+          icone: _iconeBatterie(batterie, montre.enCharge),
+          couleur: _couleurBatterie(batterie, montre.enCharge),
+          titre: 'Batterie',
+          valeur: batterie == null ? '—' : '$batterie %',
+          detail: batterie == null
+              ? 'En attente de la montre'
+              : (montre.enCharge ? 'En charge' : 'Sur batterie'),
+        ),
+        _TuileMontre(
+          icone: Icons.bluetooth_connected,
+          couleur: _couleurSignal(signal),
+          titre: 'Signal',
+          valeur: _qualiteSignal(signal),
+          detail: signal == null ? '—' : '$signal dBm',
+        ),
+        _TuileMontre(
+          icone: Icons.directions_walk,
+          couleur: AppColors.primary,
+          titre: 'Pas aujourd\'hui',
+          valeur: _milliers(montre.pasAujourdhui),
+          detail: '${_milliers(montre.caloriesAujourdhui)} kcal',
+        ),
+        _TuileMontre(
+          icone: Icons.favorite_border,
+          couleur: AppColors.danger,
+          titre: 'Rythme moyen du jour',
+          valeur: rythme,
+          detail: detailRythme,
+        ),
+        _TuileMontre(
+          icone: Icons.watch_outlined,
+          couleur: AppColors.textSecondary,
+          titre: 'Montre',
+          valeur: montre.nomMontre,
+          detail: infos.isEmpty ? 'Mibro C2' : infos.join(' · '),
+        ),
+        _TuileMontre(
+          icone: Icons.sync,
+          couleur: AppColors.textSecondary,
+          titre: 'Dernière synchro',
+          valeur: synchro == null ? '—' : DispatchUi.heure(synchro),
+          detail: synchro == null ? '—' : DispatchUi.ilYa(synchro),
+        ),
+      ],
+    );
+  }
+
+  static IconData _iconeBatterie(int? niveau, bool enCharge) {
+    if (enCharge) {
+      return Icons.battery_charging_full;
+    }
+    if (niveau == null) {
+      return Icons.battery_unknown;
+    }
+    if (niveau <= 15) {
+      return Icons.battery_alert;
+    }
+    if (niveau >= 80) {
+      return Icons.battery_full;
+    }
+    return Icons.battery_std;
+  }
+
+  static Color _couleurBatterie(int? niveau, bool enCharge) {
+    if (enCharge) {
+      return AppColors.primary;
+    }
+    if (niveau == null) {
+      return AppColors.textSecondary;
+    }
+    if (niveau <= 15) {
+      return AppColors.danger;
+    }
+    if (niveau <= 30) {
+      return AppColors.warning;
+    }
+    return AppColors.success;
+  }
+
+  static String _qualiteSignal(int? rssi) {
+    if (rssi == null) {
+      return '—';
+    }
+    if (rssi >= -60) {
+      return 'Excellent';
+    }
+    if (rssi >= -75) {
+      return 'Bon';
+    }
+    if (rssi >= -90) {
+      return 'Faible';
+    }
+    return 'Très faible';
+  }
+
+  static Color _couleurSignal(int? rssi) {
+    if (rssi == null) {
+      return AppColors.textSecondary;
+    }
+    if (rssi >= -75) {
+      return AppColors.success;
+    }
+    if (rssi >= -90) {
+      return AppColors.warning;
+    }
+    return AppColors.danger;
+  }
+
+  /// 1247 → « 1 247 »
+  static String _milliers(int v) {
+    final String s = v.toString();
+    final StringBuffer sb = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) {
+        sb.write(' ');
+      }
+      sb.write(s[i]);
+    }
+    return sb.toString();
+  }
+}
+
+class _TuileMontre extends StatelessWidget {
+  const _TuileMontre({
+    required this.icone,
+    required this.couleur,
+    required this.titre,
+    required this.valeur,
+    required this.detail,
+  });
+
+  final IconData icone;
+  final Color couleur;
+  final String titre;
+  final String valeur;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: couleur.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icone, size: 16, color: couleur),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  titre,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              valeur,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+          ),
+          Text(
+            detail,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
     );
   }
 }

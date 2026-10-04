@@ -48,10 +48,31 @@ Sans réseau, OSRM bascule sur une estimation Haversine (ligne droite × 1,3 à 
 
 ## Montre connectée (Mibro C2) → alerte → ambulance
 
-Chaîne : montre → Mibro Fit → Google Fit → **Health Connect** → VitalWatch
-(package `health`, Android uniquement, vrai téléphone).
+Chaîne : montre → **Bluetooth LE** → VitalWatch (package `flutter_blue_plus`,
+Android, vrai téléphone). Plus besoin de Mibro Fit / Google Fit / Health Connect.
 
-- `data/api/montre_cardiaque_service.dart` : autorisation + lecture du rythme (toutes les minutes).
+Protocole de la montre décodé à partir du journal HCI Bluetooth d'Android
+(échanges Mibro Fit ↔ montre) — même famille que la Makibes HR3 de Gadgetbridge :
+
+| Sens | Caractéristique | Paquet | Contenu |
+|---|---|---|---|
+| téléphone → montre | `6e400002` | `AB 00 0E FF 51 80 00 AA MM JJ hh mm …` | demande des relevés |
+| montre → téléphone | `6e400003` | `AB 00 0B FF 51 11 AA MM JJ hh mm BPM …` | relevé cardiaque |
+| montre → téléphone | `6e400003` | `AB 00 16 FF 51 20 …` | résumé horaire (pas) |
+| montre → téléphone | `6e400003` | `AB 00 05 FF 91 80 charge niveau` | batterie |
+| téléphone ↔ montre | `2a24` / `2a26` | service standard « Device Information » | modèle / firmware |
+
+Tableau de bord de la montre (écran ❤) : batterie (% + en charge, alerte ≤ 15 %),
+signal Bluetooth (RSSI), pas et calories du jour, rythme moyen / min / max du jour,
+modèle + firmware, heure de la dernière synchro.
+
+La montre mesure seule toutes les 5 min (et à chaque mesure lancée sur la montre) ;
+VitalWatch lui redemande ses relevés toutes les minutes.
+
+- `data/api/mibro_protocole.dart` : commandes, décodage des paquets, réassemblage (testé).
+- `data/api/montre_ble_service.dart` : recherche de la montre (déjà connectée à Mibro Fit,
+  appairée ou scan « XPAW… »), connexion, lecture des relevés.
+- `data/api/montre_cardiaque_service.dart` : ancienne lecture via Health Connect (non utilisée).
 - `domain/surveillance_cardiaque.dart` : seuils (45–120 bpm par défaut), alerte après
   2 mesures anormales de suite, pause de 15 min après « Je vais bien »,
   gravité critique si ≥ 150 ou ≤ 40 bpm.
@@ -80,6 +101,6 @@ ou suit la position GPS réelle quand l'ambulancier active « Partager ma positi
 
 ## Tests
 
-`flutter test test/ambulance_dispatch_test.dart test/surveillance_cardiaque_test.dart`
+`flutter test test/ambulance_dispatch_test.dart test/surveillance_cardiaque_test.dart test/mibro_protocole_test.dart`
 (Haversine, classement du dispatch, immatriculation, hôpital le plus proche,
-règles d'alerte cardiaque).
+règles d'alerte cardiaque, décodage des paquets de la montre).

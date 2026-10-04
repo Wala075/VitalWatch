@@ -49,6 +49,8 @@ dependencies:
   geolocator: ^14.1.1
   # Rythme cardiaque de la montre via Health Connect (Android)
   health: ^13.3.2
+  # Rythme cardiaque lu directement sur la montre Mibro C2 (Bluetooth LE)
+  flutter_blue_plus: ^2.3.14
 
 dev_dependencies:
   flutter_test:
