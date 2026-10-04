@@ -13,14 +13,17 @@ import '../../data/api/montre_ble_service.dart';
 import '../../data/patient_lookup.dart';
 import '../../domain/dispatch_manager.dart';
 import '../../domain/dispatch_models.dart';
+import '../../domain/models/intervention.dart';
 import '../../domain/surveillance_cardiaque.dart';
 import '../providers/dispatch_controller.dart';
 import '../widgets/dispatch_ui.dart';
+import '../widgets/ecoute_vocale.dart';
 import 'intervention_detail_screen.dart';
 
 /// Surveillance du rythme cardiaque de la montre connectée :
 /// lecture Bluetooth directe de la Mibro C2 toutes les 30 secondes, seuils,
-/// confirmation « Ça va ? » puis envoi automatique d'une ambulance.
+/// confirmation « Ça va ? » puis envoi automatique d'une ambulance ;
+/// alerte vocale (« help », « au secours ») tant que l'écran est ouvert.
 class SurveillanceCardiaqueScreen extends StatefulWidget {
   const SurveillanceCardiaqueScreen({super.key});
 
@@ -195,13 +198,24 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
     _alerteOuverte = false;
     _analyseur.suspendre();
     if (envoyer == true) {
-      await _envoyerAmbulance(alerte);
+      await _envoyerAmbulance(alerte.gravite);
     } else if (mounted) {
       DispatchUi.snack(context, 'Alerte annulée. Surveillance en pause 15 min.');
     }
   }
 
-  Future<void> _envoyerAmbulance(AlerteCardiaque alerte) async {
+  /// « help » / « au secours » entendu et non annulé : urgence, critique si
+  /// la dernière mesure de la montre est déjà très anormale.
+  Future<void> _alerteVocale() async {
+    Gravite gravite = Gravite.urgente;
+    final MesureCardiaque? der = _mesures.isEmpty ? null : _mesures.last;
+    if (der != null && _analyseur.seuils.evaluer(der.bpm) != EtatRythme.normal) {
+      gravite = AnalyseurCardiaque.graviteDe(der.bpm);
+    }
+    await _envoyerAmbulance(gravite);
+  }
+
+  Future<void> _envoyerAmbulance(Gravite gravite) async {
     if (!mounted) {
       return;
     }
@@ -225,7 +239,7 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
       final ResultatDispatch r = await _ctrl.creerDepuisAlerte(
         patientId: patientId,
         position: position,
-        gravite: alerte.gravite,
+        gravite: gravite,
       );
       if (!mounted) {
         return;
@@ -310,6 +324,11 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
             const SizedBox(height: 8),
             Info(icone: Icons.error_outline, texte: _erreur ?? '', couleur: AppColors.danger),
           ],
+          const SizedBox(height: 14),
+          CarteEcouteVocale(
+            onAlerte: _alerteVocale,
+            peutAlerter: () => !_alerteOuverte,
+          ),
           const SizedBox(height: 14),
           Section(
             titre: "Seuils d'alerte",

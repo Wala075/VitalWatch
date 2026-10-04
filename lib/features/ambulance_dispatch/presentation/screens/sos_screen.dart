@@ -9,12 +9,13 @@ import '../../domain/dispatch_models.dart';
 import '../../domain/models/intervention.dart';
 import '../providers/dispatch_controller.dart';
 import '../widgets/dispatch_ui.dart';
+import '../widgets/ecoute_vocale.dart';
 import 'intervention_detail_screen.dart';
 import 'surveillance_cardiaque_screen.dart';
 import 'tabs/interventions_tab.dart';
 
-/// Vue patient : bouton SOS (position GPS → intervention critique
-/// + dispatch automatique) et suivi de l'ambulance envoyée.
+/// Vue patient : bouton SOS ou appel vocal « help » (position GPS →
+/// intervention critique + dispatch automatique) et suivi de l'ambulance envoyée.
 class SosScreen extends StatefulWidget {
   const SosScreen({super.key});
 
@@ -60,6 +61,15 @@ class _SosScreenState extends State<SosScreen> with SingleTickerProviderStateMix
     if (!ok || !mounted) {
       return;
     }
+    await _envoyer();
+  }
+
+  /// [vocal] : appel à l'aide à la voix → aucune question, position de
+  /// démonstration si le GPS ne répond pas.
+  Future<void> _envoyer({bool vocal = false}) async {
+    if (_envoi) {
+      return;
+    }
     setState(() => _envoi = true);
     try {
       LatLng position;
@@ -69,7 +79,7 @@ class _SosScreenState extends State<SosScreen> with SingleTickerProviderStateMix
         if (!mounted) {
           return;
         }
-        final bool demo = await _proposerDemo(e.message);
+        final bool demo = vocal || await _proposerDemo(e.message);
         if (!demo) {
           return;
         }
@@ -79,10 +89,11 @@ class _SosScreenState extends State<SosScreen> with SingleTickerProviderStateMix
         if (!mounted) {
           return;
         }
-        final bool demo = await _proposerDemo(
-          'Votre position (${position.latitude.toStringAsFixed(3)}, '
-          '${position.longitude.toStringAsFixed(3)}) est hors de la zone couverte.',
-        );
+        final bool demo = vocal ||
+            await _proposerDemo(
+              'Votre position (${position.latitude.toStringAsFixed(3)}, '
+              '${position.longitude.toStringAsFixed(3)}) est hors de la zone couverte.',
+            );
         if (!demo) {
           return;
         }
@@ -143,7 +154,12 @@ class _SosScreenState extends State<SosScreen> with SingleTickerProviderStateMix
                 ),
                 const SizedBox(height: 40),
                 Center(child: _boutonSos()),
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
+                CarteEcouteVocale(
+                  onAlerte: () => _envoyer(vocal: true),
+                  peutAlerter: () => !_envoi,
+                ),
+                const SizedBox(height: 16),
                 OutlinedButton.icon(
                   onPressed: () => Navigator.push<void>(
                     context,

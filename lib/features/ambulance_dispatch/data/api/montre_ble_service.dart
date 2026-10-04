@@ -154,7 +154,7 @@ class MontreBleService {
       }
 
       await montre.connect(
-        license: License.free,
+        license: License.nonprofit, // projet étudiant
         timeout: const Duration(seconds: 15),
         autoConnect: false,
       );

@@ -82,6 +82,26 @@ VitalWatch lui redemande ses relevés toutes les 30 secondes.
 
 Accès : icône ❤ dans la barre du module (personnel) ou bouton sous le SOS (patient).
 
+## Alerte vocale (« help », « au secours »)
+
+Package `speech_to_text` (reconnaissance vocale du téléphone, permission micro
+`RECORD_AUDIO`). Tant que l'écran SOS ou Surveillance cardiaque est ouvert et
+l'application au premier plan, le téléphone écoute en continu (relance
+automatique après chaque silence, coupure en arrière-plan).
+
+- `domain/appel_aide.dart` : détection des mots-clés (help, au secours, à l'aide,
+  aidez-moi, besoin d'aide, SOS…), insensible à la casse, aux accents et à la
+  ponctuation, mots entiers uniquement (testé).
+- `data/api/ecoute_vocale_service.dart` : écoute continue, un seul micro partagé
+  entre les écrans (le dernier ouvert reçoit l'appel).
+- `presentation/widgets/ecoute_vocale.dart` : carte « Alerte vocale » (interrupteur,
+  état, dernière phrase entendue) + compte à rebours de **10 s** pour annuler.
+- Puis : SOS (`declencherSos`, position démo si pas de GPS) ou, depuis la
+  surveillance cardiaque, `creerDepuisAlerte` (urgente, critique si le dernier
+  rythme est ≥ 150 ou ≤ 40 bpm).
+
+Android émet un petit bip à chaque relance de l'écoute (comportement du système).
+
 ## Intégration module 2 (alertes vitales)
 
 ```dart
@@ -101,6 +121,6 @@ ou suit la position GPS réelle quand l'ambulancier active « Partager ma positi
 
 ## Tests
 
-`flutter test test/ambulance_dispatch_test.dart test/surveillance_cardiaque_test.dart test/mibro_protocole_test.dart`
+`flutter test test/ambulance_dispatch_test.dart test/surveillance_cardiaque_test.dart test/mibro_protocole_test.dart test/appel_aide_test.dart`
 (Haversine, classement du dispatch, immatriculation, hôpital le plus proche,
-règles d'alerte cardiaque, décodage des paquets de la montre).
+règles d'alerte cardiaque, décodage des paquets de la montre, mots d'appel à l'aide).

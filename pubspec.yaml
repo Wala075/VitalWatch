@@ -51,6 +51,8 @@ dependencies:
   health: ^13.3.2
   # Rythme cardiaque lu directement sur la montre Mibro C2 (Bluetooth LE)
   flutter_blue_plus: ^2.3.14
+  # Alerte vocale : « help » / « au secours » (reconnaissance vocale du téléphone)
+  speech_to_text: ^7.5.0
 
 dev_dependencies:
   flutter_test:
