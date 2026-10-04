@@ -67,7 +67,7 @@ signal Bluetooth (RSSI), pas et calories du jour, rythme moyen / min / max du jo
 modèle + firmware, heure de la dernière synchro.
 
 La montre mesure seule toutes les 5 min (et à chaque mesure lancée sur la montre) ;
-VitalWatch lui redemande ses relevés toutes les minutes.
+VitalWatch lui redemande ses relevés toutes les 30 secondes.
 
 - `data/api/mibro_protocole.dart` : commandes, décodage des paquets, réassemblage (testé).
 - `data/api/montre_ble_service.dart` : recherche de la montre (déjà connectée à Mibro Fit,

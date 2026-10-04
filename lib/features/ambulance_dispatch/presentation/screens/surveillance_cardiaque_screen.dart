@@ -19,7 +19,7 @@ import '../widgets/dispatch_ui.dart';
 import 'intervention_detail_screen.dart';
 
 /// Surveillance du rythme cardiaque de la montre connectée :
-/// lecture Bluetooth directe de la Mibro C2 toutes les minutes, seuils,
+/// lecture Bluetooth directe de la Mibro C2 toutes les 30 secondes, seuils,
 /// confirmation « Ça va ? » puis envoi automatique d'une ambulance.
 class SurveillanceCardiaqueScreen extends StatefulWidget {
   const SurveillanceCardiaqueScreen({super.key});
@@ -29,7 +29,7 @@ class SurveillanceCardiaqueScreen extends StatefulWidget {
 }
 
 class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScreen> {
-  static const Duration _frequence = Duration(minutes: 1);
+  static const Duration _frequence = Duration(seconds: 30);
   static const Duration _periode = Duration(hours: 3);
 
   final MontreBleService _montre = MontreBleService();
@@ -413,7 +413,7 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
         if (ok && lu != null)
           Info(
             icone: Icons.schedule,
-            texte: 'Dernière lecture ${DispatchUi.heure(lu)} · toutes les minutes',
+            texte: 'Dernière lecture ${DispatchUi.heure(lu)} · toutes les 30 s',
           ),
         if (batterieFaible)
           Info(
