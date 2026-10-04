@@ -270,19 +270,38 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
     });
   }
 
-  /// Seuils validés ou pause levée : les mesures récentes sont réévaluées
-  /// tout de suite, sans attendre deux nouvelles mesures de la montre.
-  Future<void> _reevaluer() async {
-    final AlerteCardiaque? alerte = _analyseur.reevaluer(_mesures);
+  /// Curseur relâché (quel que soit le seuil) ou « Reprendre » : pause levée,
+  /// dernière mesure comparée tout de suite aux seuils ; sinon on explique
+  /// pourquoi aucune alerte ne part.
+  Future<void> _appliquerSeuils() async {
+    final AlerteCardiaque? alerte = _analyseur.seuilsModifies(_mesures);
     setState(() {});
     if (alerte != null) {
       await _alerter(alerte);
+      return;
     }
+    if (mounted) {
+      DispatchUi.snack(context, _sansAlerte());
+    }
+  }
+
+  /// Pourquoi les nouveaux seuils ne déclenchent pas d'alerte.
+  String _sansAlerte() {
+    if (_mesures.isEmpty) {
+      return 'Aucune mesure de la montre pour l\'instant';
+    }
+    final MesureCardiaque der = _mesures.last;
+    if (DateTime.now().difference(der.date) > _analyseur.fraicheur) {
+      return 'Dernière mesure à ${DispatchUi.heure(der.date)}, trop ancienne : '
+          'lancez une mesure sur la montre';
+    }
+    final SeuilsCardiaques s = _analyseur.seuils;
+    return '${der.bpm} bpm : dans les seuils (${s.min}–${s.max}), pas d\'alerte';
   }
 
   Future<void> _reprendre() async {
     _analyseur.reprendre();
-    await _reevaluer();
+    await _appliquerSeuils();
   }
 
   @override
@@ -341,7 +360,7 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
                 divisions: 34,
                 labels: RangeLabels('${_seuils.start.round()}', '${_seuils.end.round()}'),
                 onChanged: _changerSeuils,
-                onChangeEnd: (_) => _reevaluer(),
+                onChangeEnd: (_) => _appliquerSeuils(),
               ),
               Info(
                 icone: Icons.info_outline,

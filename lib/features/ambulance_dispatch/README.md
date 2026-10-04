@@ -75,7 +75,9 @@ VitalWatch lui redemande ses relevés toutes les 30 secondes.
 - `data/api/montre_cardiaque_service.dart` : ancienne lecture via Health Connect (non utilisée).
 - `domain/surveillance_cardiaque.dart` : seuils (45–120 bpm par défaut), alerte après
   2 mesures anormales de suite, pause de 15 min après « Je vais bien »,
-  gravité critique si ≥ 150 ou ≤ 40 bpm.
+  gravité critique si ≥ 150 ou ≤ 40 bpm. Quand on change un seuil (n'importe
+  lequel), la pause est levée et la dernière mesure (< 30 min) est comparée tout
+  de suite : hors seuils → « Ça va ? », sinon un message explique pourquoi.
 - `presentation/screens/surveillance_cardiaque_screen.dart` : courbe 3 h, seuils réglables,
   « Ça va ? » 30 s puis `creerDepuisAlerte` (position GPS) → dispatch automatique.
   Mode démo : « Simuler 2 mesures ».

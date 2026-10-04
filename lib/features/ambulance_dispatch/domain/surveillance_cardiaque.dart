@@ -61,15 +61,16 @@ class AlerteCardiaque {
 ///   (une valeur isolée, souvent un artefact du capteur, ne suffit pas) ;
 /// - chaque mesure n'est analysée qu'une fois (horodatage croissant) ;
 /// - après « Je vais bien » ou une alerte envoyée, pause de [pause] ;
-/// - au changement de seuils, les mesures récentes (moins de [fraicheur])
-///   sont réévaluées tout de suite ;
+/// - au changement de seuils par l'utilisateur, la pause est levée et la
+///   dernière mesure récente (moins de [fraicheur]) est comparée tout de
+///   suite aux nouveaux seuils, quels qu'ils soient ;
 /// - gravité critique si ≥ 150 ou ≤ 40 bpm, urgente sinon.
 class AnalyseurCardiaque {
   AnalyseurCardiaque({
     this.seuils = const SeuilsCardiaques(),
     this.mesuresConsecutives = 2,
     this.pause = const Duration(minutes: 15),
-    this.fraicheur = const Duration(minutes: 15),
+    this.fraicheur = const Duration(minutes: 30),
   });
 
   SeuilsCardiaques seuils;
@@ -139,6 +140,31 @@ class AnalyseurCardiaque {
     final MesureCardiaque der = _anormales.last;
     _anormales.clear();
     return AlerteCardiaque(mesure: der, etat: seuils.evaluer(der.bpm), gravite: graviteDe(der.bpm));
+  }
+
+  /// Seuils modifiés à la main : la pause est levée et la dernière mesure
+  /// récente suffit (l'utilisateur a changé la règle lui-même ; le « Ça va ? »
+  /// de 30 s reste là pour annuler). Null si cette mesure est dans les seuils,
+  /// trop ancienne ou absente.
+  AlerteCardiaque? seuilsModifies(List<MesureCardiaque> mesures, {DateTime? maintenant}) {
+    _silenceJusqua = null;
+    _anormales.clear();
+    for (final MesureCardiaque m in mesures) {
+      final DateTime? d = _derniere;
+      if (d == null || m.date.isAfter(d)) {
+        _derniere = m.date;
+      }
+    }
+    if (mesures.isEmpty) {
+      return null;
+    }
+    final MesureCardiaque der = mesures.last;
+    final DateTime now = maintenant ?? DateTime.now();
+    final EtatRythme etat = seuils.evaluer(der.bpm);
+    if (now.difference(der.date) > fraicheur || etat == EtatRythme.normal) {
+      return null;
+    }
+    return AlerteCardiaque(mesure: der, etat: etat, gravite: graviteDe(der.bpm));
   }
 
   /// « Je vais bien » ou alerte traitée : pas de nouvelle alerte pendant [pause].

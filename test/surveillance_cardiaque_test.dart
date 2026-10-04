@@ -86,4 +86,31 @@ void main() {
     expect(a.enPause, isFalse);
     expect(a.reevaluer([m(72, 0), m(74, 5)], maintenant: t0.add(const Duration(minutes: 6))), isNotNull);
   });
+
+  test('seuils modifiés : n\'importe quel seuil, pause levée, dernière mesure suffit', () {
+    final AnalyseurCardiaque a = AnalyseurCardiaque();
+    final List<MesureCardiaque> mesures = [m(60, 0), m(78, 5)];
+    final DateTime t = t0.add(const Duration(minutes: 6));
+    a.suspendre(); // alerte précédente (seuil 65) → pause
+    for (final int max in [65, 70, 75]) {
+      a.seuils = SeuilsCardiaques(min: 45, max: max);
+      final AlerteCardiaque? alerte = a.seuilsModifies(mesures, maintenant: t);
+      expect(alerte?.mesure.bpm, 78, reason: 'seuil $max');
+      a.suspendre();
+    }
+    a.seuils = const SeuilsCardiaques(min: 45, max: 80);
+    expect(a.seuilsModifies(mesures, maintenant: t), isNull); // 78 dans les seuils
+  });
+
+  test('seuils modifiés : seuil bas', () {
+    final AnalyseurCardiaque a = AnalyseurCardiaque(seuils: const SeuilsCardiaques(min: 80, max: 120));
+    final AlerteCardiaque? alerte = a.seuilsModifies([m(72, 0)], maintenant: t0.add(const Duration(minutes: 1)));
+    expect(alerte?.etat, EtatRythme.bas);
+  });
+
+  test('seuils modifiés : mesure trop ancienne ou absente', () {
+    final AnalyseurCardiaque a = AnalyseurCardiaque(seuils: const SeuilsCardiaques(max: 65));
+    expect(a.seuilsModifies([m(78, 0)], maintenant: t0.add(const Duration(minutes: 45))), isNull);
+    expect(a.seuilsModifies([]), isNull);
+  });
 }
