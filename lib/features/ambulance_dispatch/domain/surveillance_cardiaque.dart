@@ -61,17 +61,21 @@ class AlerteCardiaque {
 ///   (une valeur isolée, souvent un artefact du capteur, ne suffit pas) ;
 /// - chaque mesure n'est analysée qu'une fois (horodatage croissant) ;
 /// - après « Je vais bien » ou une alerte envoyée, pause de [pause] ;
+/// - au changement de seuils, les mesures récentes (moins de [fraicheur])
+///   sont réévaluées tout de suite ;
 /// - gravité critique si ≥ 150 ou ≤ 40 bpm, urgente sinon.
 class AnalyseurCardiaque {
   AnalyseurCardiaque({
     this.seuils = const SeuilsCardiaques(),
     this.mesuresConsecutives = 2,
     this.pause = const Duration(minutes: 15),
+    this.fraicheur = const Duration(minutes: 15),
   });
 
   SeuilsCardiaques seuils;
   final int mesuresConsecutives;
   final Duration pause;
+  final Duration fraicheur;
 
   final List<MesureCardiaque> _anormales = [];
   DateTime? _derniere;
@@ -84,6 +88,9 @@ class AnalyseurCardiaque {
     final DateTime? fin = _silenceJusqua;
     return fin != null && DateTime.now().isBefore(fin);
   }
+
+  /// Fin de la pause en cours (null si pas de pause).
+  DateTime? get finPause => enPause ? _silenceJusqua : null;
 
   /// Analyse une nouvelle mesure ; renvoie l'alerte à déclencher ou null.
   AlerteCardiaque? analyser(MesureCardiaque m) {
@@ -106,10 +113,43 @@ class AnalyseurCardiaque {
     return AlerteCardiaque(mesure: m, etat: etat, gravite: graviteDe(m.bpm));
   }
 
+  /// Réévalue tout de suite les dernières mesures (triées par date) avec les
+  /// seuils actuels : sans cela, un nouveau seuil n'agit qu'après
+  /// [mesuresConsecutives] nouvelles mesures de la montre (~5 min chacune).
+  /// Seules les mesures de moins de [fraicheur] comptent.
+  AlerteCardiaque? reevaluer(List<MesureCardiaque> mesures, {DateTime? maintenant}) {
+    final DateTime now = maintenant ?? DateTime.now();
+    for (final MesureCardiaque m in mesures) {
+      final DateTime? d = _derniere;
+      if (d == null || m.date.isAfter(d)) {
+        _derniere = m.date;
+      }
+    }
+    _anormales.clear();
+    for (int i = mesures.length - 1; i >= 0; i--) {
+      final MesureCardiaque m = mesures[i];
+      if (now.difference(m.date) > fraicheur || seuils.evaluer(m.bpm) == EtatRythme.normal) {
+        break;
+      }
+      _anormales.insert(0, m);
+    }
+    if (enPause || _anormales.length < mesuresConsecutives) {
+      return null;
+    }
+    final MesureCardiaque der = _anormales.last;
+    _anormales.clear();
+    return AlerteCardiaque(mesure: der, etat: seuils.evaluer(der.bpm), gravite: graviteDe(der.bpm));
+  }
+
   /// « Je vais bien » ou alerte traitée : pas de nouvelle alerte pendant [pause].
   void suspendre() {
     _silenceJusqua = DateTime.now().add(pause);
     _anormales.clear();
+  }
+
+  /// Fin anticipée de la pause.
+  void reprendre() {
+    _silenceJusqua = null;
   }
 
   static Gravite graviteDe(int bpm) {

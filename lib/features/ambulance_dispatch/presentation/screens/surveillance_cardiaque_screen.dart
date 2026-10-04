@@ -123,8 +123,10 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
         _erreur = null;
       });
       if (premiere) {
-        if (res.isNotEmpty) {
-          _analyseur.analyser(res.last);
+        // Pas d'alerte sur l'historique ancien : seules les mesures récentes comptent.
+        final AlerteCardiaque? alerte = _analyseur.reevaluer(res);
+        if (alerte != null) {
+          await _alerter(alerte);
         }
         return;
       }
@@ -254,10 +256,26 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
     });
   }
 
+  /// Seuils validés ou pause levée : les mesures récentes sont réévaluées
+  /// tout de suite, sans attendre deux nouvelles mesures de la montre.
+  Future<void> _reevaluer() async {
+    final AlerteCardiaque? alerte = _analyseur.reevaluer(_mesures);
+    setState(() {});
+    if (alerte != null) {
+      await _alerter(alerte);
+    }
+  }
+
+  Future<void> _reprendre() async {
+    _analyseur.reprendre();
+    await _reevaluer();
+  }
+
   @override
   Widget build(BuildContext context) {
     final MesureCardiaque? derniere = _mesures.isEmpty ? null : _mesures.last;
     final SeuilsCardiaques seuils = _analyseur.seuils;
+    final DateTime? finPause = _analyseur.finPause;
 
     return Scaffold(
       appBar: AppBar(
@@ -304,6 +322,7 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
                 divisions: 34,
                 labels: RangeLabels('${_seuils.start.round()}', '${_seuils.end.round()}'),
                 onChanged: _changerSeuils,
+                onChangeEnd: (_) => _reevaluer(),
               ),
               Info(
                 icone: Icons.info_outline,
@@ -311,6 +330,21 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
                     '${_analyseur.mesuresConsecutives} mesures de suite, '
                     'puis 30 s pour répondre « Je vais bien »',
               ),
+              if (finPause != null) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Info(
+                        icone: Icons.pause_circle_outline,
+                        texte: 'Alertes en pause jusqu\'à ${DispatchUi.heure(finPause)}',
+                        couleur: AppColors.warning,
+                      ),
+                    ),
+                    TextButton(onPressed: _reprendre, child: const Text('Reprendre')),
+                  ],
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 14),

@@ -51,4 +51,39 @@ void main() {
     expect(a.analyser(m(170, 1)), isNull);
     expect(a.enPause, isTrue);
   });
+
+  test('nouveau seuil : les 2 dernières mesures récentes déclenchent l\'alerte', () {
+    final AnalyseurCardiaque a = AnalyseurCardiaque();
+    final List<MesureCardiaque> mesures = [m(70, 0), m(72, 5), m(74, 10)];
+    for (final MesureCardiaque x in mesures) {
+      expect(a.analyser(x), isNull); // normal avec 45–120
+    }
+    a.seuils = const SeuilsCardiaques(min: 45, max: 65);
+    final AlerteCardiaque? alerte = a.reevaluer(mesures, maintenant: t0.add(const Duration(minutes: 11)));
+    expect(alerte, isNotNull);
+    expect(alerte?.mesure.bpm, 74);
+    expect(alerte?.etat, EtatRythme.eleve);
+  });
+
+  test('nouveau seuil : mesures trop anciennes ignorées', () {
+    final AnalyseurCardiaque a = AnalyseurCardiaque(seuils: const SeuilsCardiaques(max: 65));
+    final List<MesureCardiaque> mesures = [m(72, 0), m(74, 5)];
+    expect(a.reevaluer(mesures, maintenant: t0.add(const Duration(minutes: 40))), isNull);
+  });
+
+  test('nouveau seuil : 1 mesure récente anormale + 1 nouvelle → alerte', () {
+    final AnalyseurCardiaque a = AnalyseurCardiaque(seuils: const SeuilsCardiaques(max: 65));
+    expect(a.reevaluer([m(60, 0), m(72, 5)], maintenant: t0.add(const Duration(minutes: 6))), isNull);
+    expect(a.anomaliesEnCours, 1);
+    expect(a.analyser(m(73, 10)), isNotNull);
+  });
+
+  test('reprendre lève la pause', () {
+    final AnalyseurCardiaque a = AnalyseurCardiaque(seuils: const SeuilsCardiaques(max: 65));
+    a.suspendre();
+    expect(a.finPause, isNotNull);
+    a.reprendre();
+    expect(a.enPause, isFalse);
+    expect(a.reevaluer([m(72, 0), m(74, 5)], maintenant: t0.add(const Duration(minutes: 6))), isNotNull);
+  });
 }
