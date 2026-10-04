@@ -283,25 +283,36 @@ class _CarteTabState extends State<CarteTab> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
-            _Compteur(
-              valeur: _ctrl.compterFlotte(StatutAmbulance.disponible),
-              libelle: 'libres',
-              couleur: AppColors.success,
+            // Réduit les compteurs sur les petits écrans au lieu de déborder
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _Compteur(
+                      valeur: _ctrl.compterFlotte(StatutAmbulance.disponible),
+                      libelle: 'libres',
+                      couleur: AppColors.success,
+                    ),
+                    _Compteur(
+                      valeur: _ctrl.compterFlotte(StatutAmbulance.enMission),
+                      libelle: 'en mission',
+                      couleur: DispatchUi.bleu,
+                    ),
+                    _Compteur(
+                      valeur: _ctrl.nbEnAttente,
+                      libelle: 'en attente',
+                      couleur: AppColors.danger,
+                    ),
+                  ],
+                ),
+              ),
             ),
-            _Compteur(
-              valeur: _ctrl.compterFlotte(StatutAmbulance.enMission),
-              libelle: 'en mission',
-              couleur: DispatchUi.bleu,
-            ),
-            _Compteur(
-              valeur: _ctrl.nbEnAttente,
-              libelle: 'en attente',
-              couleur: AppColors.danger,
-            ),
-            const Spacer(),
             if (_ctrl.simulation)
               Pastille(
-                libelle: 'Simulation ×${_ctrl.vitesse}',
+                libelle: '×${_ctrl.vitesse}',
                 couleur: AppColors.purple,
                 icone: Icons.speed,
               ),
