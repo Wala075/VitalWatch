@@ -69,6 +69,13 @@ class PatientRepository {
     return res;
   }
 
+  Future<Patient?> parId(int id) async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows =
+        await db.query('patients', where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : Patient.fromMap(rows.first);
+  }
+
   Future<List<Patient>> parMedecin(int medecinId) async {
     final Database db = await _db;
     final List<Map<String, Object?>> rows = await db

@@ -6,8 +6,8 @@ import 'package:flutter/material.dart';
 import '../../../../../core/theme/app_colors.dart';
 import '../../../data/demo_data.dart';
 import '../../../data/demo_store.dart';
-import '../../widgets/ecg_painter.dart';
-import '../../widgets/page_title.dart';
+import '../../../../../core/widgets/ecg_painter.dart';
+import '../../../../../core/widgets/page_title.dart';
 
 class HealthTab extends StatefulWidget {
   const HealthTab({super.key});

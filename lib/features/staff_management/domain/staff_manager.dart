@@ -8,9 +8,11 @@ import '../../../models/patient.dart';
 import '../../../models/service.dart';
 import '../../../models/utilisateur.dart';
 import '../data/compte_repository.dart';
+import '../data/horaire_repository.dart';
 import '../data/medecin_repository.dart';
 import '../data/patient_repository.dart';
 import '../data/service_repository.dart';
+import 'disponibilite.dart';
 import 'staff_models.dart';
 
 /// Règles métier du module Services & Personnel.
@@ -32,6 +34,7 @@ class StaffManager {
   final PatientRepository _patients;
   final CompteRepository _comptes;
   final EmailService _email;
+  final HoraireRepository _horaires = HoraireRepository();
 
   Future<Database> get _db => AppDatabase.instance.database;
 
@@ -96,6 +99,7 @@ class StaffManager {
       final ResultatEnregistrement cree =
           await db.transaction((Transaction txn) async {
         final int nouveauId = await _medecins.inserer(m, exec: txn);
+        await _horaires.parDefaut(nouveauId, exec: txn);
         final CompteCree compte = await _comptes.creer(
           email: m.email,
           role: Role.medecin,
@@ -148,6 +152,42 @@ class StaffManager {
       await _medecins.supprimer(id, exec: txn);
     });
     return n;
+  }
+
+  /// Horaires de consultation : créneaux valides (début < fin),
+  /// sans chevauchement dans une même journée.
+  Future<void> enregistrerHoraires(int medecinId, List<Creneau> creneaux) async {
+    for (final Creneau c in creneaux) {
+      if (c.jour < 1 || c.jour > 7) {
+        throw const StaffException('Jour invalide');
+      }
+      if (c.debut < 0 || c.fin > 24 * 60 || c.debut >= c.fin) {
+        throw StaffException(
+          "${Horaire.jours[c.jour - 1]} : l'heure de fin doit être après l'heure de début",
+        );
+      }
+    }
+    for (int j = 1; j <= 7; j++) {
+      final List<Creneau> jour = [
+        for (final Creneau c in creneaux)
+          if (c.jour == j) c,
+      ]..sort((a, b) => a.debut.compareTo(b.debut));
+      for (int i = 1; i < jour.length; i++) {
+        if (jour[i].debut < jour[i - 1].fin) {
+          throw StaffException('${Horaire.jours[j - 1]} : deux créneaux se chevauchent');
+        }
+      }
+    }
+    final Database db = await _db;
+    await db.transaction(
+      (Transaction txn) => _horaires.remplacer(medecinId, creneaux, exec: txn),
+    );
+  }
+
+  /// Congé (false) / retour (true) : un médecin en congé ne reçoit plus
+  /// de nouveaux patients (affectation automatique).
+  Future<void> changerDisponibilite(int medecinId, bool disponible) {
+    return _medecins.changerDisponibilite(medecinId, disponible);
   }
 
   Future<int> _reaffecterPatientsDe(int medecinId) async {

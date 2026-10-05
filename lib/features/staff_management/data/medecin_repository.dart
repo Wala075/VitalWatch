@@ -90,6 +90,17 @@ class MedecinRepository {
     return rows.isEmpty ? null : rows.first['id'] as int?;
   }
 
+  /// Congé (false) / retour (true).
+  Future<void> changerDisponibilite(int id, bool disponible) async {
+    final Database db = await _db;
+    await db.update(
+      'medecins',
+      {'disponible': disponible ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<int> inserer(Medecin m, {DatabaseExecutor? exec}) async {
     final DatabaseExecutor e = exec ?? await _db;
     return e.insert('medecins', m.toMap());

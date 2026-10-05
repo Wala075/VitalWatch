@@ -8,6 +8,8 @@ import '../../features/home/presentation/screens/splash_screen.dart';
 import '../../features/patient_monitoring/presentation/screens/patient_monitoring_screen.dart';
 import '../../features/prescriptions/presentation/screens/prescriptions_screen.dart';
 import '../../features/staff_management/presentation/screens/staff_management_screen.dart';
+import '../../models/utilisateur.dart';
+import '../../shared_providers/session.dart';
 import 'app_routes.dart';
 
 /// Point d'intégration unique des routes (géré par le chef de projet).
@@ -21,7 +23,12 @@ class AppRouter {
         page = const SplashScreen();
         break;
       case AppRoutes.home:
-        page = const HomeScreen();
+        // Admin, médecins et infirmiers : espace personnel (module 1).
+        // Patients (et autres rôles) : accueil patient.
+        final Role? role = Session.utilisateur?.role;
+        page = role != null && role.accesPersonnel
+            ? const StaffManagementScreen()
+            : const HomeScreen();
         break;
       case AppRoutes.login:
         page = const LoginScreen();

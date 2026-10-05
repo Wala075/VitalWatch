@@ -4,7 +4,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/primary_button.dart';
 import '../../data/demo_data.dart';
 import '../../data/demo_store.dart';
-import '../widgets/app_background.dart';
+import '../../../../core/widgets/app_background.dart';
 import '../widgets/confetti_burst.dart';
 import '../widgets/doctor_avatar.dart';
 

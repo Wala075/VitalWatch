@@ -46,26 +46,34 @@ class StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Text.rich plutôt qu'une Row : le libellé se tronque (…) quand la place
+    // manque, sans erreur quand le badge est dans une Row.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: couleur.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: couleur),
-          const SizedBox(width: 4),
-          Text(
-            libelle,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: couleur,
+      child: Text.rich(
+        TextSpan(
+          children: [
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Icon(icon, size: 14, color: couleur),
+              ),
             ),
-          ),
-        ],
+            TextSpan(text: libelle),
+          ],
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: couleur,
+        ),
       ),
     );
   }

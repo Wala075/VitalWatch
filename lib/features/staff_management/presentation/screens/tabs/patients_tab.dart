@@ -3,17 +3,24 @@ import 'package:flutter/material.dart';
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../core/widgets/app_dropdown_field.dart';
 import '../../../../../core/widgets/empty_state.dart';
+import '../../../../../core/widgets/page_title.dart';
 import '../../../../../core/widgets/search_field.dart';
 import '../../../../../models/patient.dart';
 import '../../../../../models/service.dart';
 import '../../../../../models/utilisateur.dart';
 import '../../../data/patient_repository.dart';
 import '../../../data/service_repository.dart';
+import '../../../domain/sante_simulee.dart';
 import '../../../domain/staff_models.dart';
 import '../../widgets/avatar_initiales.dart';
+import '../../widgets/badges_sante.dart';
+import '../../widgets/bouton_ajout.dart';
 import '../../widgets/info_chip.dart';
 import '../patient_form_screen.dart';
+import '../patient_sante_screen.dart';
 
+/// Liste des patients triée par niveau d'alerte (critiques en premier).
+/// Toucher un patient ouvre son suivi de santé.
 class PatientsTab extends StatefulWidget {
   const PatientsTab({super.key, required this.role});
 
@@ -23,12 +30,23 @@ class PatientsTab extends StatefulWidget {
   State<PatientsTab> createState() => _PatientsTabState();
 }
 
+class _Ligne {
+  const _Ligne(this.detail, this.constantes, this.evaluation);
+
+  final PatientDetail detail;
+  final Constantes constantes;
+  final Evaluation evaluation;
+}
+
 class _PatientsTabState extends State<PatientsTab> {
   final PatientRepository _repo = PatientRepository();
   final ServiceRepository _serviceRepo = ServiceRepository();
 
   List<PatientDetail> _patients = [];
   PatientFiltre _filtre = const PatientFiltre();
+
+  /// Filtre rapide sur le niveau d'alerte (null = tous).
+  NiveauAlerte? _niveau;
   bool _chargement = true;
   int _requete = 0;
 
@@ -41,9 +59,7 @@ class _PatientsTabState extends State<PatientsTab> {
   Future<void> _charger() async {
     final int requete = ++_requete;
     final List<PatientDetail> res = await _repo.rechercher(_filtre);
-    if (!mounted || requete != _requete) {
-      return;
-    }
+    if (!mounted || requete != _requete) return;
     setState(() {
       _patients = res;
       _chargement = false;
@@ -52,53 +68,77 @@ class _PatientsTabState extends State<PatientsTab> {
 
   Future<void> _ouvrirFiltres() async {
     final List<Service> services = await _serviceRepo.lister();
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     final PatientFiltre? res = await showModalBottomSheet<PatientFiltre>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => _FiltreSheet(initial: _filtre, services: services),
     );
-    if (res != null) {
-      setState(() => _filtre = res);
-      _charger();
-    }
+    if (!mounted || res == null) return;
+    setState(() => _filtre = res);
+    _charger();
   }
 
-  Future<void> _ouvrirFormulaire([Patient? patient]) async {
+  Future<void> _ajouter() async {
     final bool? modifie = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => PatientFormScreen(
-          patient: patient,
           peutSupprimer: widget.role.supprimerPatients,
         ),
       ),
     );
-    if (modifie == true) {
-      _charger();
-    }
+    if (modifie == true) _charger();
+  }
+
+  Future<void> _ouvrir(Patient p) async {
+    final int? id = p.id;
+    if (id == null) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PatientSanteScreen(patientId: id, role: widget.role),
+      ),
+    );
+    if (mounted) _charger();
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool gerer = widget.role.gererPatients;
+    final List<_Ligne> lignes = [
+      for (final PatientDetail d in _patients)
+        _Ligne(
+          d,
+          SanteSimulee.instant(d.patient),
+          SanteSimulee.evaluerPatient(d.patient),
+        ),
+    ]..sort((a, b) {
+        final int n = b.evaluation.niveau.index.compareTo(a.evaluation.niveau.index);
+        return n != 0
+            ? n
+            : a.detail.patient.nomComplet.compareTo(b.detail.patient.nomComplet);
+      });
 
-    return Scaffold(
-      floatingActionButton: gerer
-          ? FloatingActionButton.extended(
-              heroTag: 'fab_patients',
-              onPressed: () => _ouvrirFormulaire(),
-              icon: const Icon(Icons.person_add),
-              label: const Text('Patient'),
-            )
-          : null,
-      body: Column(
+    int compter(NiveauAlerte n) =>
+        lignes.where((l) => l.evaluation.niveau == n).length;
+    final List<_Ligne> visibles = _niveau == null
+        ? lignes
+        : lignes.where((l) => l.evaluation.niveau == _niveau).toList();
+
+    return SafeArea(
+      bottom: false,
+      child: Column(
         children: [
+          PageTitle(
+            surtitre: 'Suivi des patients',
+            titre: 'Patients',
+            trailing: widget.role.gererPatients
+                ? BoutonAjout(tooltip: 'Ajouter un patient', onPressed: _ajouter)
+                : null,
+          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: SearchField(
               hint: 'Nom, CIN, téléphone...',
               nbFiltres: _filtre.nbFiltresActifs,
@@ -109,10 +149,51 @@ class _PatientsTabState extends State<PatientsTab> {
               },
             ),
           ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 38,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              children: [
+                FiltreRapide(
+                  libelle: 'Tous',
+                  nombre: lignes.length,
+                  selectionne: _niveau == null,
+                  onTap: () => setState(() => _niveau = null),
+                ),
+                const SizedBox(width: 8),
+                FiltreRapide(
+                  libelle: 'Critique',
+                  nombre: compter(NiveauAlerte.critique),
+                  selectionne: _niveau == NiveauAlerte.critique,
+                  couleur: AppColors.danger,
+                  onTap: () => setState(() => _niveau = NiveauAlerte.critique),
+                ),
+                const SizedBox(width: 8),
+                FiltreRapide(
+                  libelle: 'À surveiller',
+                  nombre: compter(NiveauAlerte.surveiller),
+                  selectionne: _niveau == NiveauAlerte.surveiller,
+                  couleur: AppColors.warning,
+                  onTap: () => setState(() => _niveau = NiveauAlerte.surveiller),
+                ),
+                const SizedBox(width: 8),
+                FiltreRapide(
+                  libelle: 'Stable',
+                  nombre: compter(NiveauAlerte.stable),
+                  selectionne: _niveau == NiveauAlerte.stable,
+                  couleur: AppColors.success,
+                  onTap: () => setState(() => _niveau = NiveauAlerte.stable),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
           Expanded(
             child: _chargement
                 ? const Center(child: CircularProgressIndicator())
-                : _patients.isEmpty
+                : visibles.isEmpty
                     ? const EmptyState(
                         icon: Icons.people_outline,
                         message: 'Aucun patient trouvé',
@@ -120,16 +201,14 @@ class _PatientsTabState extends State<PatientsTab> {
                     : RefreshIndicator(
                         onRefresh: _charger,
                         child: ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-                          itemCount: _patients.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+                          itemCount: visibles.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 10),
                           itemBuilder: (BuildContext context, int i) {
-                            final PatientDetail d = _patients[i];
+                            final _Ligne l = visibles[i];
                             return _PatientCard(
-                              detail: d,
-                              onTap: gerer
-                                  ? () => _ouvrirFormulaire(d.patient)
-                                  : null,
+                              ligne: l,
+                              onTap: () => _ouvrir(l.detail.patient),
                             );
                           },
                         ),
@@ -142,82 +221,138 @@ class _PatientsTabState extends State<PatientsTab> {
 }
 
 class _PatientCard extends StatelessWidget {
-  const _PatientCard({required this.detail, this.onTap});
+  const _PatientCard({required this.ligne, required this.onTap});
 
-  final PatientDetail detail;
-  final VoidCallback? onTap;
+  final _Ligne ligne;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final Patient p = detail.patient;
-    final String? medecin = detail.medecinNom;
+    final Patient p = ligne.detail.patient;
+    final String? medecin = ligne.detail.medecinNom;
+    final Constantes c = ligne.constantes;
+    final NiveauAlerte niveau = ligne.evaluation.niveau;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
       child: InkWell(
+        borderRadius: BorderRadius.circular(20),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(14),
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AvatarInitiales(
-                prenom: p.prenom,
-                nom: p.nom,
-                couleur: AppColors.secondary,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      p.nomComplet,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'CIN ${p.cin} · ${p.age} ans · ${Patient.sexes[p.sexe] ?? p.sexe}'
-                      '${p.groupeSanguin == null ? '' : ' · ${p.groupeSanguin}'}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AvatarInitiales(
+                    prenom: p.prenom,
+                    nom: p.nom,
+                    couleur: couleurNiveau(niveau),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        InfoChip(
-                          icon: Icons.apartment,
-                          texte: detail.serviceNom ?? 'Sans service',
-                        ),
-                        if (medecin != null)
-                          InfoChip(
-                            icon: Icons.medical_services_outlined,
-                            texte: medecin,
-                          )
-                        else
-                          const StatusBadge(
-                            libelle: 'Non affecté',
-                            icon: Icons.warning_amber_rounded,
-                            couleur: AppColors.warning,
+                        Text(
+                          p.nomComplet,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
                           ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${p.age} ans · ${Patient.sexes[p.sexe] ?? p.sexe}'
+                          '${p.groupeSanguin == null ? '' : ' · ${p.groupeSanguin}'}'
+                          ' · ${ligne.detail.serviceNom ?? 'Sans service'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 8),
+                  NiveauBadge(niveau: niveau),
+                ],
               ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  _Mesure(
+                    icon: Icons.favorite_rounded,
+                    texte: '${c.frequence} bpm',
+                    niveau: SanteSimulee.niveauFrequence(c.frequence, p.age),
+                  ),
+                  _Mesure(
+                    icon: Icons.air_rounded,
+                    texte: '${c.spo2} %',
+                    niveau: SanteSimulee.niveauSpo2(c.spo2),
+                  ),
+                  _Mesure(
+                    icon: Icons.thermostat_rounded,
+                    texte: '${c.temperatureTexte} °C',
+                    niveau: SanteSimulee.niveauTemperature(c.temperature),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (medecin != null)
+                InfoChip(icon: Icons.medical_services_outlined, texte: medecin)
+              else
+                const StatusBadge(
+                  libelle: 'Aucun médecin affecté',
+                  icon: Icons.warning_amber_rounded,
+                  couleur: AppColors.warning,
+                ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _Mesure extends StatelessWidget {
+  const _Mesure({required this.icon, required this.texte, required this.niveau});
+
+  final IconData icon;
+  final String texte;
+  final NiveauAlerte niveau;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool normal = niveau == NiveauAlerte.stable;
+    final Color couleur = normal ? AppColors.textSecondary : couleurNiveau(niveau);
+
+    return Expanded(
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: normal ? AppColors.primary : couleur),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              texte,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: normal ? FontWeight.w500 : FontWeight.w800,
+                color: normal ? AppColors.textPrimary : couleur,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

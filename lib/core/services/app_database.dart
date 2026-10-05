@@ -13,7 +13,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const String _fichier = 'vitalwatch.db';
-  static const int _version = 1;
+  static const int _version = 2;
 
   Future<Database>? _ouverture;
 
@@ -28,6 +28,7 @@ class AppDatabase {
         await db.execute('PRAGMA foreign_keys = ON');
       },
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -88,7 +89,44 @@ class AppDatabase {
       )
     ''');
 
+    await _creerTableHoraires(db);
+
     await _donneesDemo(db);
+  }
+
+  /// Migration des bases déjà installées (version 1 → 2).
+  Future<void> _onUpgrade(Database db, int ancienne, int nouvelle) async {
+    if (ancienne < 2) {
+      await _creerTableHoraires(db);
+      final List<Map<String, Object?>> medecins =
+          await db.query('medecins', columns: ['id']);
+      final Batch b = db.batch();
+      for (final Map<String, Object?> m in medecins) {
+        final int id = m['id'] as int;
+        for (int jour = 1; jour <= 5; jour++) {
+          b.insert('horaires_medecins', _horaire(id, jour, 9 * 60, 17 * 60));
+        }
+      }
+      await b.commit(noResult: true);
+    }
+  }
+
+  // ===== Module 1 : horaires de consultation des médecins (version 2) =====
+  // jour : 1 = lundi … 7 = dimanche ; debut / fin : minutes depuis minuit.
+  Future<void> _creerTableHoraires(Database db) async {
+    await db.execute('''
+      CREATE TABLE horaires_medecins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        medecin_id INTEGER NOT NULL REFERENCES medecins(id) ON DELETE CASCADE,
+        jour INTEGER NOT NULL,
+        debut INTEGER NOT NULL,
+        fin INTEGER NOT NULL
+      )
+    ''');
+  }
+
+  Map<String, Object?> _horaire(int medecinId, int jour, int debut, int fin) {
+    return {'medecin_id': medecinId, 'jour': jour, 'debut': debut, 'fin': fin};
   }
 
   /// Données de démonstration (créées une seule fois, au premier lancement).
@@ -119,6 +157,21 @@ class AppDatabase {
     b.insert('utilisateurs', _compte('nour.mansour@vitalwatch.tn', 'medecin123', Role.medecin, 4, 'Mansour', 'Nour'));
     b.insert('utilisateurs', _compte('infirmier@vitalwatch.tn', 'infirmier123', Role.infirmier, null, 'Saidi', 'Rim'));
     b.insert('utilisateurs', _compte('patient@vitalwatch.tn', 'patient123', Role.patient, 1, 'Trabelsi', 'Sarra'));
+
+    // Horaires de consultation de démonstration
+    for (int j = 1; j <= 5; j++) {
+      b.insert('horaires_medecins', _horaire(1, j, 8 * 60, 14 * 60));
+    }
+    for (final int j in [1, 3, 4]) {
+      b.insert('horaires_medecins', _horaire(2, j, 13 * 60, 19 * 60));
+    }
+    b.insert('horaires_medecins', _horaire(2, 6, 9 * 60, 13 * 60));
+    for (int j = 1; j <= 7; j++) {
+      b.insert('horaires_medecins', _horaire(3, j, 8 * 60, 20 * 60));
+    }
+    for (int j = 2; j <= 6; j++) {
+      b.insert('horaires_medecins', _horaire(4, j, 9 * 60, 17 * 60));
+    }
 
     await b.commit(noResult: true);
   }
