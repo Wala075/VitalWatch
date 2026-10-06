@@ -471,8 +471,11 @@ class _BandeauEta extends StatelessWidget {
       progression = s.fraction;
     } else if (statut == StatutIntervention.surPlace) {
       final Duration? r = intervention.tempsReponse;
+      final DateTime? depart = DispatchController.instance.departHopitalPrevu(intervention);
       titre = 'Équipe sur place';
-      detail = r == null ? 'Prise en charge en cours' : 'Temps de réponse : ${DispatchUi.duree(r)}';
+      detail = '${r == null ? 'Prise en charge en cours' : 'Temps de réponse : ${DispatchUi.duree(r)}'}'
+          '${depart == null ? '' : ' · départ vers ${intervention.hopitalDestination ?? "l'hôpital"} '
+              'vers ${DispatchUi.heure(depart)}'}';
       icone = Icons.medical_services_outlined;
       couleur = DispatchUi.orange;
     } else if (statut == StatutIntervention.terminee) {

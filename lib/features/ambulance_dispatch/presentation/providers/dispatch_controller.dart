@@ -41,6 +41,11 @@ class DispatchController extends ChangeNotifier {
   /// Temps de mobilisation de l'équipage avant le départ (simulation).
   static const Duration mobilisation = Duration(seconds: 60);
 
+  /// Simulation : soins sur place avant le départ vers l'hôpital ; la mission
+  /// se termine ensuite à l'arrivée à l'hôpital (le patient est libéré pour
+  /// un nouveau SOS). La régulation peut toujours agir à la main avant.
+  static const Duration soinsSurPlace = Duration(minutes: 2);
+
   List<AmbulanceDetail> flotte = [];
   List<InterventionDetail> ouvertes = [];
 
@@ -394,7 +399,7 @@ class DispatchController extends ChangeNotifier {
   // =====================================================================
 
   Future<void> _tick() async {
-    if (_tickEnCours || suivis.isEmpty) {
+    if (_tickEnCours || (suivis.isEmpty && !_soinsEnCours())) {
       return;
     }
     _tickEnCours = true;
@@ -403,6 +408,9 @@ class DispatchController extends ChangeNotifier {
     bool bouge = false;
     try {
       final DateTime maintenant = DateTime.now();
+      if (await _partirVersHopital(maintenant)) {
+        recharger = true;
+      }
       final List<SuiviMission> liste = List<SuiviMission>.of(suivis.values);
       for (final SuiviMission s in liste) {
         if (!simulation || s.ambulanceId == ambulanceGps) {
@@ -443,6 +451,57 @@ class DispatchController extends ChangeNotifier {
     } else if (bouge) {
       notifyListeners();
     }
+  }
+
+  /// Une équipe est sur place (simulation active, ambulance non suivie au GPS).
+  bool _soinsEnCours() {
+    if (!simulation) {
+      return false;
+    }
+    for (final InterventionDetail d in ouvertes) {
+      if (d.intervention.statut == StatutIntervention.surPlace &&
+          d.intervention.ambulanceId != ambulanceGps) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Fin des soins sur place → transport vers l'hôpital de destination.
+  Future<bool> _partirVersHopital(DateTime maintenant) async {
+    if (!simulation) {
+      return false;
+    }
+    bool parti = false;
+    for (final InterventionDetail d in List<InterventionDetail>.of(ouvertes)) {
+      final Intervention i = d.intervention;
+      final int? id = i.id;
+      final DateTime? arrivee = i.heureArrivee;
+      if (id == null ||
+          arrivee == null ||
+          i.statut != StatutIntervention.surPlace ||
+          i.ambulanceId == ambulanceGps) {
+        continue;
+      }
+      if (maintenant.difference(arrivee) * vitesse < soinsSurPlace) {
+        continue;
+      }
+      final String hopital = Hopitaux.parNom(i.hopitalDestination)?.nom ??
+          Hopitaux.plusProche(i.position).nom;
+      await manager.transporter(id, hopital);
+      _evenements.add('${_immat(i.ambulanceId ?? 0)} part vers $hopital');
+      parti = true;
+    }
+    return parti;
+  }
+
+  /// Heure prévue du départ vers l'hôpital (simulation), ou null.
+  DateTime? departHopitalPrevu(Intervention i) {
+    final DateTime? arrivee = i.heureArrivee;
+    if (!simulation || arrivee == null || i.statut != StatutIntervention.surPlace) {
+      return null;
+    }
+    return arrivee.add(Duration(milliseconds: soinsSurPlace.inMilliseconds ~/ vitesse));
   }
 
   Future<void> _arrivee(SuiviMission s) async {

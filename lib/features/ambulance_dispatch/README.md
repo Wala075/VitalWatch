@@ -41,7 +41,9 @@ Sans réseau, OSRM bascule sur une estimation Haversine (ligne droite × 1,3 à 
 - **Création automatique** depuis un SOS (`declencherSos`) ou une alerte vitale
   (`creerDepuisAlerte`), avec anti-doublon par patient.
 - **Cycle de vie** : en attente → assignée → en route → sur place → transport → terminée
-  (km ajoutés au compteur, ambulance repositionnée à l'hôpital).
+  (km ajoutés au compteur, ambulance repositionnée à l'hôpital). En simulation, tout
+  s'enchaîne seul : 1 min de mobilisation, trajet, 2 min de soins sur place, transport
+  vers l'hôpital de destination, clôture à l'arrivée (la régulation peut agir avant).
 - **Maintenance préventive** : blocage automatique si maintenance en cours ou seuil
   `prochain_entretien_km` atteint ; remise en service automatique quand plus rien ne bloque.
 - **KPI** : temps moyen de réponse (appel → arrivée), délai de départ, % sous 15 min,
