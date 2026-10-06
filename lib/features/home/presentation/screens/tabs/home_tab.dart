@@ -6,6 +6,7 @@ import '../../../../../core/routing/app_routes.dart';
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../models/utilisateur.dart';
 import '../../../../../shared_providers/session.dart';
+import '../../../../ambulance_dispatch/presentation/widgets/carte_montre_patient.dart';
 import '../../../data/demo_data.dart';
 import '../../../data/demo_store.dart';
 import '../../widgets/countdown_chip.dart';
@@ -135,7 +136,8 @@ class _HomeTabState extends State<HomeTab> {
               const SizedBox(height: 24),
               const SectionHeader(titre: "Votre santé aujourd'hui"),
               const SizedBox(height: 12),
-              _santeDuJour(),
+              // Patient : vraies données de sa montre (module 3), sinon démo.
+              if (u?.role == Role.patient) const CarteMontrePatient() else _santeDuJour(),
               const SizedBox(height: 24),
               SectionHeader(
                 titre: 'Meilleurs médecins',

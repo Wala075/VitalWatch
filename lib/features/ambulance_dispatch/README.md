@@ -84,8 +84,15 @@ VitalWatch lui redemande ses relevés toutes les 30 secondes.
   « Ça va ? » 30 s puis `creerDepuisAlerte` (position GPS) → dispatch automatique.
   Mode démo : « Simuler 2 mesures ».
 
-Accès : bouton « Surveiller mon rythme cardiaque » sous le SOS, **compte patient
-uniquement** (c'est le patient qui porte la montre).
+Accès : **compte patient uniquement** (c'est le patient qui porte la montre).
+La montre est connectée et synchronisée pendant toute la session du patient
+(`presentation/providers/montre_controller.dart`), pas seulement sur l'écran montre :
+- **Accueil** du patient : « Votre santé aujourd'hui » affiche les vraies données
+  (rythme exact + mini-courbe, pas + calories, batterie + charge, état Bluetooth,
+  heure de synchro) — `presentation/widgets/carte_montre_patient.dart` ;
+- détail (onglet SOS → « Surveiller mon rythme » ou toucher la carte de l'accueil) ;
+- alertes « Ça va ? » affichées où que soit le patient (`widgets/hote_montre_patient.dart`),
+  y compris écran verrouillé avec la protection vocale (bouton « Annuler » dans la notification).
 
 ### Synchronisation patient → personnel
 

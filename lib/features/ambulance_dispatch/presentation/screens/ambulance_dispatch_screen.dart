@@ -6,6 +6,7 @@ import '../../../../shared_providers/session.dart';
 import '../../domain/ambulance_permissions.dart';
 import '../providers/dispatch_controller.dart';
 import '../widgets/dispatch_ui.dart';
+import '../widgets/hote_montre_patient.dart';
 import 'sos_screen.dart';
 import 'suivi_cardiaque_screen.dart';
 import 'tabs/carte_tab.dart';
@@ -61,7 +62,8 @@ class _AmbulanceDispatchScreenState extends State<AmbulanceDispatchScreen> {
   Widget build(BuildContext context) {
     final Role role = Session.utilisateur?.role ?? Role.patient;
     if (!role.accesRegulation) {
-      return const SosScreen();
+      // Patient : la montre et ses alertes tournent pour toute la session.
+      return const HoteMontrePatient(child: SosScreen());
     }
 
     final bool ambulancier = role == Role.ambulancier;
