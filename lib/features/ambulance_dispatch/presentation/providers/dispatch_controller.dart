@@ -58,8 +58,11 @@ class DispatchController extends ChangeNotifier {
   int revision = 0;
 
   /// Simulation du déplacement (démo) et facteur d'accélération.
+  /// Temps réel par défaut : on voit l'ambulance rouler (1 min de
+  /// mobilisation puis la durée OSRM du trajet) et le temps de réponse est
+  /// réaliste ; la régulation peut accélérer (×5, ×10, ×30).
   bool simulation = true;
-  int vitesse = 10;
+  int vitesse = 1;
 
   Timer? _horloge;
   bool _tickEnCours = false;

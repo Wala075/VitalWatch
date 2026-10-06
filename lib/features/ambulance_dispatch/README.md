@@ -157,7 +157,8 @@ await DispatchController.instance.creerDepuisAlerte(
 ## Suivi temps réel
 
 `presentation/providers/dispatch_controller.dart` déplace les ambulances le long de
-l'itinéraire OSRM (simulation, vitesse réglable ×1 à ×30 dans la barre d'outils),
+l'itinéraire OSRM (simulation en temps réel par défaut : 1 min de mobilisation puis la
+durée OSRM du trajet ; accélérable ×5 à ×30 dans la barre d'outils de la régulation),
 ou suit la position GPS réelle quand l'ambulancier active « Partager ma position ».
 
 ## Tests
