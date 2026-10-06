@@ -135,22 +135,25 @@ class _InterventionDetailScreenState extends State<InterventionDetailScreen> {
     await _executer(() => _ctrl.transporter(id, choix), succes: 'Transport vers $choix');
   }
 
-  Future<void> _annuler(Intervention i) async {
+  Future<void> _annuler(Intervention i, {bool patient = false}) async {
     final int? id = i.id;
     if (id == null) {
       return;
     }
     final bool ok = await showConfirmDialog(
       context,
-      titre: "Annuler l'intervention",
-      message: "L'ambulance engagée redevient disponible.",
-      confirmer: 'Annuler l\'intervention',
+      titre: patient ? 'Annuler ma demande ?' : "Annuler l'intervention",
+      message: patient
+          ? "Fausse alerte ? L'ambulance fait demi-tour et redevient disponible. "
+              'En cas de doute, gardez-la : appelez le 190.'
+          : "L'ambulance engagée redevient disponible.",
+      confirmer: patient ? 'Annuler ma demande' : 'Annuler l\'intervention',
       danger: true,
     );
     if (ok) {
       await _executer(() async {
         await _ctrl.annuler(id);
-      }, succes: 'Intervention annulée');
+      }, succes: patient ? 'Demande annulée' : 'Intervention annulée');
     }
   }
 
@@ -217,7 +220,7 @@ class _InterventionDetailScreenState extends State<InterventionDetailScreen> {
               const SizedBox(height: 14),
               _Chronologie(intervention: i),
               const SizedBox(height: 16),
-              if (_piloter) ..._actions(i),
+              if (_piloter) ..._actions(i) else if (_role == Role.patient) ..._actionsPatient(i),
               if (_role == Role.ambulancier && amb != null && amb.id != null) ...[
                 const SizedBox(height: 8),
                 SwitchListTile(
@@ -343,6 +346,37 @@ class _InterventionDetailScreenState extends State<InterventionDetailScreen> {
         ),
       ],
     );
+  }
+
+  /// Patient : il peut annuler SA demande (fausse alerte, « help » entendu
+  /// par erreur) tant que l'équipe n'est pas arrivée. Ensuite l'équipe est
+  /// avec lui : c'est elle qui clôture (fin automatique à l'hôpital).
+  List<Widget> _actionsPatient(Intervention i) {
+    final int? moi = Session.utilisateur?.refId;
+    if (i.id == null || !i.statut.estOuverte || i.patientId == null || i.patientId != moi) {
+      return [];
+    }
+    final bool annulable = i.statut == StatutIntervention.enAttente ||
+        i.statut == StatutIntervention.assignee ||
+        i.statut == StatutIntervention.enRoute;
+    if (!annulable) {
+      return [
+        Info(
+          icone: Icons.info_outline,
+          texte: i.statut == StatutIntervention.transport
+              ? "Transport en cours : clôture automatique à l'hôpital"
+              : "L'équipe est avec vous : elle clôture l'intervention",
+        ),
+      ];
+    }
+    return [
+      OutlinedButton.icon(
+        onPressed: _action ? null : () => _annuler(i, patient: true),
+        icon: const Icon(Icons.cancel_outlined, color: AppColors.danger),
+        label: const Text('Annuler ma demande (fausse alerte)',
+            style: TextStyle(color: AppColors.danger)),
+      ),
+    ];
   }
 
   List<Widget> _actions(Intervention i) {
