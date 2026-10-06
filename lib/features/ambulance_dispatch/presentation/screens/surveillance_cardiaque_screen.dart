@@ -5,25 +5,25 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/widgets/app_dropdown_field.dart';
-import '../../../../models/patient.dart';
 import '../../../../models/utilisateur.dart';
 import '../../../../shared_providers/session.dart';
 import '../../data/api/montre_ble_service.dart';
-import '../../data/patient_lookup.dart';
+import '../../data/rythme_repository.dart';
 import '../../domain/dispatch_manager.dart';
 import '../../domain/dispatch_models.dart';
 import '../../domain/models/intervention.dart';
 import '../../domain/surveillance_cardiaque.dart';
 import '../providers/dispatch_controller.dart';
+import '../widgets/carte_rythme.dart';
 import '../widgets/dispatch_ui.dart';
 import '../widgets/ecoute_vocale.dart';
 import 'intervention_detail_screen.dart';
 
-/// Surveillance du rythme cardiaque de la montre connectée :
-/// lecture Bluetooth directe de la Mibro C2 toutes les 30 secondes, seuils,
-/// confirmation « Ça va ? » puis envoi automatique d'une ambulance ;
-/// alerte vocale (« help », « au secours ») tant que l'écran est ouvert.
+/// Espace patient (celui qui porte la montre) : lecture Bluetooth de la
+/// Mibro C2 toutes les 30 secondes, enregistrement des mesures dans la base
+/// (le médecin et la régulation les suivent), seuils fixés par le médecin,
+/// « Ça va ? » puis envoi automatique d'une ambulance ; alerte vocale
+/// (« help », « au secours ») tant que l'écran est ouvert.
 class SurveillanceCardiaqueScreen extends StatefulWidget {
   const SurveillanceCardiaqueScreen({super.key});
 
@@ -37,14 +37,11 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
 
   final MontreBleService _montre = MontreBleService();
   final AnalyseurCardiaque _analyseur = AnalyseurCardiaque();
-  final PatientLookup _patients = PatientLookup();
+  final RythmeRepository _rythme = RythmeRepository();
   final DispatchController _ctrl = DispatchController.instance;
 
   EtatMontre? _etatMontre;
   List<MesureCardiaque> _mesures = [];
-  List<Patient> _listePatients = [];
-  int? _patientId;
-  RangeValues _seuils = const RangeValues(45, 120);
   double _bpmSimule = 155;
   Timer? _minuterie;
   bool _lecture = false;
@@ -52,7 +49,11 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
   DateTime? _derniereLecture;
   String? _erreur;
 
-  bool get _estPatient => Session.utilisateur?.role == Role.patient;
+  /// Patient connecté : ses mesures sont enregistrées sous son dossier.
+  int? get _patientId {
+    final Utilisateur? u = Session.utilisateur;
+    return u != null && u.role == Role.patient ? u.refId : null;
+  }
 
   @override
   void initState() {
@@ -69,18 +70,59 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
   }
 
   Future<void> _initialiser() async {
-    final List<Patient> patients = await _patients.lister();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _listePatients = patients;
-      _patientId = _estPatient
-          ? Session.utilisateur?.refId
-          : (patients.isEmpty ? null : patients.first.id);
-    });
+    await _chargerBase();
     await _connecter();
     _minuterie = Timer.periodic(_frequence, (_) => _lire());
+  }
+
+  /// Seuils fixés par le médecin + mesures déjà enregistrées (courbe affichée
+  /// avant même que la montre réponde).
+  Future<void> _chargerBase() async {
+    final int? pid = _patientId;
+    if (pid == null) {
+      return;
+    }
+    try {
+      final SeuilsCardiaques seuils = await _rythme.seuils(pid);
+      final List<MesureCardiaque> historique = await _rythme.historique(pid, periode: _periode);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _analyseur.seuils = seuils;
+        _mesures = historique;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _erreur = 'Base de données indisponible : $e');
+      }
+    }
+  }
+
+  /// Enregistre des mesures dans le dossier du patient et renvoie l'historique
+  /// à afficher ; null si aucun patient n'est connecté (mémoire seule).
+  Future<List<MesureCardiaque>?> _enregistrer(List<MesureCardiaque> mesures) async {
+    final int? pid = _patientId;
+    if (pid == null) {
+      return null;
+    }
+    await _rythme.enregistrer(pid, mesures);
+    return _rythme.historique(pid, periode: _periode);
+  }
+
+  /// Seuils relus à chaque synchro : le médecin a pu les changer. Vrai si oui.
+  Future<bool> _rechargerSeuils() async {
+    final int? pid = _patientId;
+    if (pid == null) {
+      return false;
+    }
+    final SeuilsCardiaques s = await _rythme.seuils(pid);
+    final SeuilsCardiaques avant = _analyseur.seuils;
+    if (s.min == avant.min && s.max == avant.max) {
+      return false;
+    }
+    _analyseur.seuils = s;
+    return true;
   }
 
   /// Cherche la montre (déjà connectée à Mibro Fit, appairée ou par scan)
@@ -109,6 +151,10 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
     setState(() => _lecture = true);
     try {
       final List<MesureCardiaque> res = await _montre.mesures(periode: _periode);
+      // Synchronisation : mesures → base (visibles par le médecin),
+      // seuils ← base (fixés par le médecin).
+      final List<MesureCardiaque>? base = await _enregistrer(res);
+      final bool nouveauxSeuils = await _rechargerSeuils();
       if (!mounted) {
         return;
       }
@@ -119,12 +165,17 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
         }
       }
       setState(() {
-        _mesures = [...res, ...simulees]
-          ..sort((MesureCardiaque a, MesureCardiaque b) => a.date.compareTo(b.date));
+        _mesures = base ??
+            ([...res, ...simulees]
+              ..sort((MesureCardiaque a, MesureCardiaque b) => a.date.compareTo(b.date)));
         _derniereLecture = DateTime.now();
         _etatMontre = _montre.etat;
         _erreur = null;
       });
+      if (nouveauxSeuils && !premiere) {
+        await _appliquerSeuils(nouveaux: true);
+        return;
+      }
       if (premiere) {
         // Pas d'alerte sur l'historique ancien : seules les mesures récentes comptent.
         final AlerteCardiaque? alerte = _analyseur.reevaluer(res);
@@ -144,7 +195,7 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
       if (mounted) {
         setState(() {
           _etatMontre = _montre.etat;
-          _erreur = 'Lecture de la montre impossible : $e';
+          _erreur = 'Synchronisation impossible : $e';
         });
       }
     } finally {
@@ -167,7 +218,11 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
       ),
       MesureCardiaque(bpm: bpm, date: maintenant, source: 'Simulation', simulee: true),
     ];
-    setState(() => _mesures = [..._mesures, ...deux]);
+    final List<MesureCardiaque>? base = await _enregistrer(deux);
+    if (!mounted) {
+      return;
+    }
+    setState(() => _mesures = base ?? [..._mesures, ...deux]);
     for (final MesureCardiaque m in deux) {
       final AlerteCardiaque? alerte = _analyseur.analyser(m);
       if (alerte != null) {
@@ -221,7 +276,11 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
     }
     final int? patientId = _patientId;
     if (patientId == null) {
-      DispatchUi.snack(context, 'Choisissez le patient qui porte la montre', erreur: true);
+      DispatchUi.snack(
+        context,
+        'Connectez-vous avec le compte du patient qui porte la montre',
+        erreur: true,
+      );
       return;
     }
     LatLng position = DispatchManager.centreZone;
@@ -263,17 +322,10 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
     }
   }
 
-  void _changerSeuils(RangeValues v) {
-    setState(() {
-      _seuils = v;
-      _analyseur.seuils = SeuilsCardiaques(min: v.start.round(), max: v.end.round());
-    });
-  }
-
-  /// Curseur relâché (quel que soit le seuil) ou « Reprendre » : pause levée,
-  /// dernière mesure comparée tout de suite aux seuils ; sinon on explique
-  /// pourquoi aucune alerte ne part.
-  Future<void> _appliquerSeuils() async {
+  /// Nouveaux seuils fixés par le médecin (quels qu'ils soient) ou
+  /// « Reprendre » : pause levée, dernière mesure comparée tout de suite aux
+  /// seuils ; sinon on explique pourquoi aucune alerte ne part.
+  Future<void> _appliquerSeuils({bool nouveaux = false}) async {
     final AlerteCardiaque? alerte = _analyseur.seuilsModifies(_mesures);
     setState(() {});
     if (alerte != null) {
@@ -281,7 +333,10 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
       return;
     }
     if (mounted) {
-      DispatchUi.snack(context, _sansAlerte());
+      DispatchUi.snack(
+        context,
+        '${nouveaux ? 'Nouveaux seuils du médecin · ' : ''}${_sansAlerte()}',
+      );
     }
   }
 
@@ -332,7 +387,7 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
         children: [
           _connexion(),
           const SizedBox(height: 14),
-          _CarteRythme(
+          CarteRythme(
             derniere: derniere,
             etat: derniere == null ? null : seuils.evaluer(derniere.bpm),
             mesures: _mesures,
@@ -353,14 +408,20 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
             titre: "Seuils d'alerte",
             icone: Icons.tune,
             children: [
-              RangeSlider(
-                values: _seuils,
-                min: 30,
-                max: 200,
-                divisions: 34,
-                labels: RangeLabels('${_seuils.start.round()}', '${_seuils.end.round()}'),
-                onChanged: _changerSeuils,
-                onChangeEnd: (_) => _appliquerSeuils(),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${seuils.min} – ${seuils.max} bpm',
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  const Pastille(
+                    libelle: 'Fixés par le médecin',
+                    couleur: AppColors.primary,
+                    icone: Icons.lock_outline,
+                  ),
+                ],
               ),
               Info(
                 icone: Icons.info_outline,
@@ -387,25 +448,24 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
           ),
           const SizedBox(height: 14),
           Section(
-            titre: 'Patient qui porte la montre',
-            icone: Icons.person_outline,
+            titre: 'Partage avec le médecin',
+            icone: Icons.sync,
             children: [
-              if (_estPatient)
+              if (_patientId != null) ...[
                 Info(
                   icone: Icons.verified_user_outlined,
                   texte: Session.utilisateur?.nomComplet ?? 'Patient connecté',
                   couleur: AppColors.textPrimary,
-                )
-              else
-                AppDropdownField<int?>(
-                  label: 'Patient',
-                  icon: Icons.person_search_outlined,
-                  value: _patientId,
-                  items: [
-                    for (final Patient p in _listePatients)
-                      DropdownMenuItem<int?>(value: p.id, child: Text(p.nomComplet)),
-                  ],
-                  onChanged: (int? v) => setState(() => _patientId = v),
+                ),
+                const Info(
+                  icone: Icons.cloud_done_outlined,
+                  texte: 'Chaque mesure va dans votre dossier : médecin et régulation la voient',
+                ),
+              ] else
+                const Info(
+                  icone: Icons.warning_amber_rounded,
+                  texte: 'Compte patient requis pour enregistrer les mesures',
+                  couleur: AppColors.danger,
                 ),
             ],
           ),
@@ -516,177 +576,6 @@ class _SurveillanceCardiaqueScreenState extends State<SurveillanceCardiaqueScree
       ],
     );
   }
-}
-
-/// Carte sombre : dernière valeur + courbe des 3 dernières heures.
-class _CarteRythme extends StatelessWidget {
-  const _CarteRythme({
-    required this.derniere,
-    required this.etat,
-    required this.mesures,
-    required this.seuils,
-    required this.anomalies,
-  });
-
-  final MesureCardiaque? derniere;
-  final EtatRythme? etat;
-  final List<MesureCardiaque> mesures;
-  final SeuilsCardiaques seuils;
-  final int anomalies;
-
-  @override
-  Widget build(BuildContext context) {
-    final MesureCardiaque? m = derniere;
-    final EtatRythme? e = etat;
-    final bool normal = e == null || e == EtatRythme.normal;
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.ink,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Icon(Icons.favorite, color: normal ? AppColors.ecg : AppColors.danger, size: 30),
-              const SizedBox(width: 10),
-              Text(
-                m == null ? '--' : '${m.bpm}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 48,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.only(left: 6, bottom: 4),
-                child: Text('bpm', style: TextStyle(color: Colors.white70, fontSize: 16)),
-              ),
-              const Spacer(),
-              if (e != null)
-                Pastille(
-                  libelle: e.libelle,
-                  couleur: normal ? AppColors.ecg : AppColors.danger,
-                  icone: normal ? Icons.check_circle_outline : Icons.warning_amber_rounded,
-                ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            m == null
-                ? 'Aucune mesure sur les 3 dernières heures'
-                : '${DispatchUi.ilYa(m.date)} · ${m.simulee ? 'simulation' : (m.source.isEmpty ? 'montre' : m.source)}'
-                    '${anomalies > 0 ? ' · $anomalies mesure(s) anormale(s) de suite' : ''}',
-            style: const TextStyle(color: Colors.white60, fontSize: 12.5),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            height: 130,
-            width: double.infinity,
-            child: CustomPaint(
-              painter: _CourbePainter(mesures: mesures, seuils: seuils),
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('-3 h', style: TextStyle(color: Colors.white38, fontSize: 11)),
-              Text('maintenant', style: TextStyle(color: Colors.white38, fontSize: 11)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Courbe du rythme (une série) + lignes de seuil pointillées.
-class _CourbePainter extends CustomPainter {
-  _CourbePainter({required this.mesures, required this.seuils});
-
-  final List<MesureCardiaque> mesures;
-  final SeuilsCardiaques seuils;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final DateTime fin = DateTime.now();
-    final DateTime debut = fin.subtract(const Duration(hours: 3));
-    int bas = seuils.min - 10;
-    int haut = seuils.max + 20;
-    for (final MesureCardiaque m in mesures) {
-      bas = math.min(bas, m.bpm - 5);
-      haut = math.max(haut, m.bpm + 5);
-    }
-
-    double x(DateTime d) {
-      final double t = d.difference(debut).inSeconds / fin.difference(debut).inSeconds;
-      return t.clamp(0.0, 1.0) * size.width;
-    }
-
-    double y(int bpm) => size.height - (bpm - bas) / (haut - bas) * size.height;
-
-    // Seuils (pointillés) + étiquettes
-    final Paint seuil = Paint()
-      ..color = AppColors.danger.withValues(alpha: 0.7)
-      ..strokeWidth = 1;
-    for (final int v in [seuils.min, seuils.max]) {
-      final double yy = y(v);
-      for (double xx = 0; xx < size.width; xx += 8) {
-        canvas.drawLine(Offset(xx, yy), Offset(math.min(xx + 4, size.width), yy), seuil);
-      }
-      final TextPainter tp = TextPainter(
-        text: TextSpan(
-          text: '$v',
-          style: const TextStyle(color: Colors.white54, fontSize: 10),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset(0, yy - tp.height - 1));
-    }
-
-    final List<MesureCardiaque> visibles = [];
-    for (final MesureCardiaque m in mesures) {
-      if (!m.date.isBefore(debut)) {
-        visibles.add(m);
-      }
-    }
-    if (visibles.isEmpty) {
-      return;
-    }
-
-    final Path chemin = Path();
-    for (int i = 0; i < visibles.length; i++) {
-      final Offset p = Offset(x(visibles[i].date), y(visibles[i].bpm));
-      if (i == 0) {
-        chemin.moveTo(p.dx, p.dy);
-      } else {
-        chemin.lineTo(p.dx, p.dy);
-      }
-    }
-    canvas.drawPath(
-      chemin,
-      Paint()
-        ..color = AppColors.ecg
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..strokeJoin = StrokeJoin.round,
-    );
-
-    final MesureCardiaque der = visibles.last;
-    final Offset point = Offset(x(der.date), y(der.bpm));
-    final bool anormal = seuils.evaluer(der.bpm) != EtatRythme.normal;
-    canvas.drawCircle(point, 6, Paint()..color = AppColors.ink);
-    canvas.drawCircle(point, 4.5, Paint()..color = anormal ? AppColors.danger : AppColors.ecg);
-  }
-
-  @override
-  bool shouldRepaint(_CourbePainter ancien) => true;
 }
 
 /// « Ça va ? » : 30 s pour annuler, sinon l'ambulance part.

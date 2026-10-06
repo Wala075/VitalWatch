@@ -19,4 +19,12 @@ extension AmbulancePermissions on Role {
       this == Role.infirmier;
 
   bool get voirKpi => this == Role.admin || this == Role.medecin;
+
+  /// Liste de suivi cardiaque de tous les patients (mesures des montres).
+  /// L'ambulancier voit seulement le rythme du patient de sa mission.
+  bool get suiviCardiaque =>
+      this == Role.admin || this == Role.medecin || this == Role.infirmier;
+
+  /// Fixer les seuils d'alerte cardiaque d'un patient.
+  bool get reglerSeuils => this == Role.admin || this == Role.medecin;
 }

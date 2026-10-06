@@ -17,6 +17,7 @@ import '../providers/dispatch_controller.dart';
 import '../providers/suivi_mission.dart';
 import '../widgets/carte_osm.dart';
 import '../widgets/dispatch_ui.dart';
+import '../widgets/rythme_patient.dart';
 
 /// Suivi d'une intervention : carte temps réel, ETA, chronologie, actions.
 class InterventionDetailScreen extends StatefulWidget {
@@ -195,6 +196,7 @@ class _InterventionDetailScreenState extends State<InterventionDetailScreen> {
     final SuiviMission? suivi = id == null ? null : _ctrl.suiviDe(id);
     final int? ambId = i.ambulanceId;
     final Ambulance? amb = ambId == null ? null : _ctrl.ambulanceParId(ambId);
+    final int? patientId = i.patientId;
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 32),
@@ -208,6 +210,10 @@ class _InterventionDetailScreenState extends State<InterventionDetailScreen> {
               _BandeauEta(intervention: i, suivi: suivi),
               const SizedBox(height: 14),
               _infos(d, amb),
+              if (patientId != null) ...[
+                const SizedBox(height: 14),
+                RythmePatient(key: ValueKey<int>(patientId), patientId: patientId),
+              ],
               const SizedBox(height: 14),
               _Chronologie(intervention: i),
               const SizedBox(height: 16),

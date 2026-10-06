@@ -137,7 +137,8 @@ class _SosScreenState extends State<SosScreen> with SingleTickerProviderStateMix
         builder: (BuildContext context, Widget? _) {
           final InterventionDetail? demande = _maDemande;
           return ListView(
-            padding: const EdgeInsets.all(20),
+            // Bas : place pour la barre de navigation flottante de l'accueil.
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 110),
             children: [
               if (demande == null) ...[
                 const SizedBox(height: 20),

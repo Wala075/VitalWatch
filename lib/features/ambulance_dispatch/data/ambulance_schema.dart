@@ -93,6 +93,31 @@ class AmbulanceSchema {
       await txn.execute(
         'CREATE INDEX IF NOT EXISTS idx_maintenances_ambulance ON maintenances(ambulance_id)',
       );
+      // Rythme cardiaque : le téléphone du patient (montre) écrit,
+      // le personnel lit. Une mesure par patient et par horodatage.
+      await txn.execute('''
+        CREATE TABLE IF NOT EXISTS mesures_cardiaques (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+          bpm INTEGER NOT NULL,
+          date TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT '',
+          simulee INTEGER NOT NULL DEFAULT 0,
+          UNIQUE (patient_id, date)
+        )
+      ''');
+      await txn.execute(
+        'CREATE INDEX IF NOT EXISTS idx_mesures_patient_date ON mesures_cardiaques(patient_id, date)',
+      );
+      // Seuils d'alerte fixés par le médecin pour chaque patient.
+      await txn.execute('''
+        CREATE TABLE IF NOT EXISTS seuils_cardiaques (
+          patient_id INTEGER PRIMARY KEY REFERENCES patients(id) ON DELETE CASCADE,
+          min INTEGER NOT NULL,
+          max INTEGER NOT NULL,
+          modifie_le TEXT NOT NULL
+        )
+      ''');
 
       final int nb = Sqflite.firstIntValue(
             await txn.rawQuery('SELECT COUNT(*) FROM ambulances'),

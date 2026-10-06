@@ -10,6 +10,8 @@ Branche : `feature/ambulances`
 | `ambulanciers` | id, nom, role, telephone, disponible, ambulance_id (affectation d'équipage) |
 | `interventions` | id, ambulance_id, patient_id, alerte_id, adresse, lat, lng, gravite, statut, origine, heure_appel, heure_depart, heure_arrivee, hopital_destination |
 | `maintenances` | id, ambulance_id, type, date, cout, prochain_entretien_km, statut |
+| `mesures_cardiaques` | id, patient_id, bpm, date, source, simulee (montre du patient) |
+| `seuils_cardiaques` | patient_id, min, max, modifie_le (fixés par le médecin) |
 
 Les tables sont créées avec `CREATE TABLE IF NOT EXISTS` au premier accès :
 `app_database.dart` (fichier commun) n'est pas modifié. Des données de démo
@@ -82,7 +84,34 @@ VitalWatch lui redemande ses relevés toutes les 30 secondes.
   « Ça va ? » 30 s puis `creerDepuisAlerte` (position GPS) → dispatch automatique.
   Mode démo : « Simuler 2 mesures ».
 
-Accès : icône ❤ dans la barre du module (personnel) ou bouton sous le SOS (patient).
+Accès : bouton « Surveiller mon rythme cardiaque » sous le SOS, **compte patient
+uniquement** (c'est le patient qui porte la montre).
+
+### Synchronisation patient → personnel
+
+La montre n'est connectée qu'au téléphone du patient. Toutes les 30 s, ce téléphone
+enregistre les nouvelles mesures dans la base (table `mesures_cardiaques`, doublons
+ignorés) et relit ses seuils (table `seuils_cardiaques`). Le personnel lit ces tables,
+sans jamais se connecter à la montre :
+
+| Compte | Ce qu'il voit / fait |
+|---|---|
+| Patient | montre en Bluetooth, courbe, « Ça va ? », SOS, « help » ; seuils en lecture seule |
+| Médecin | icône ❤ du module : ses patients (ou tous), dernier rythme, alertes, courbe 3 h, stats du jour ; **fixe les seuils** de chaque patient |
+| Admin / infirmier | même suivi (l'admin peut aussi fixer les seuils) |
+| Ambulancier | carte « Rythme du patient » dans *Ma mission* et dans l'intervention |
+
+Seuils changés par le médecin → appliqués par le téléphone du patient à la synchro
+suivante : si la dernière mesure est hors seuils, « Ça va ? » puis ambulance.
+
+- `data/rythme_repository.dart` : enregistrement, historique, seuils, tableau de suivi.
+- `domain/suivi_cardiaque.dart` : résumé par patient (actif, en alerte), tri, statistiques (testé).
+- `presentation/screens/suivi_cardiaque_screen.dart` : liste + détail patient (personnel).
+- `presentation/widgets/rythme_patient.dart` : carte « Rythme du patient » d'une mission.
+
+Base SQLite locale : la synchronisation fonctionne entre les comptes d'un même
+téléphone (démo). Pour plusieurs téléphones, il faudra un serveur commun
+(ex. Firebase) — même schéma de tables.
 
 ## Alerte vocale (« help », « au secours »)
 
@@ -123,6 +152,7 @@ ou suit la position GPS réelle quand l'ambulancier active « Partager ma positi
 
 ## Tests
 
-`flutter test test/ambulance_dispatch_test.dart test/surveillance_cardiaque_test.dart test/mibro_protocole_test.dart test/appel_aide_test.dart`
+`flutter test test/ambulance_dispatch_test.dart test/surveillance_cardiaque_test.dart test/mibro_protocole_test.dart test/appel_aide_test.dart test/suivi_cardiaque_test.dart`
 (Haversine, classement du dispatch, immatriculation, hôpital le plus proche,
-règles d'alerte cardiaque, décodage des paquets de la montre, mots d'appel à l'aide).
+règles d'alerte cardiaque, décodage des paquets de la montre, mots d'appel à l'aide,
+suivi cardiaque des patients).

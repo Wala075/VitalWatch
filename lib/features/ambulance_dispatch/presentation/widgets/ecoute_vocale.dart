@@ -24,16 +24,28 @@ class CarteEcouteVocale extends StatefulWidget {
 
 class _CarteEcouteVocaleState extends State<CarteEcouteVocale> {
   final EcouteVocaleService _ecoute = EcouteVocaleService.instance;
+  bool _abonne = false;
 
+  /// Micro actif seulement si l'écran est visible : onglet caché de
+  /// l'accueil (IndexedStack) ou écran recouvert → TickerMode désactivé.
   @override
-  void initState() {
-    super.initState();
-    _ecoute.abonner(_surAppel);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bool visible = TickerMode.of(context);
+    if (visible && !_abonne) {
+      _ecoute.abonner(_surAppel);
+      _abonne = true;
+    } else if (!visible && _abonne) {
+      _ecoute.desabonner(_surAppel);
+      _abonne = false;
+    }
   }
 
   @override
   void dispose() {
-    _ecoute.desabonner(_surAppel);
+    if (_abonne) {
+      _ecoute.desabonner(_surAppel);
+    }
     super.dispose();
   }
 

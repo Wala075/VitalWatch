@@ -7,7 +7,7 @@ import '../../domain/ambulance_permissions.dart';
 import '../providers/dispatch_controller.dart';
 import '../widgets/dispatch_ui.dart';
 import 'sos_screen.dart';
-import 'surveillance_cardiaque_screen.dart';
+import 'suivi_cardiaque_screen.dart';
 import 'tabs/carte_tab.dart';
 import 'tabs/equipages_tab.dart';
 import 'tabs/flotte_tab.dart';
@@ -20,7 +20,10 @@ import 'tabs/stats_tab.dart';
 /// - Régulation (admin, médecin, infirmier) : carte temps réel,
 ///   interventions, flotte, équipages ; KPI + heatmap (admin, médecin).
 /// - Ambulancier : sa mission, la carte, ses interventions.
-/// - Patient : bouton SOS + suivi de l'ambulance.
+/// - Patient : bouton SOS + suivi de l'ambulance ; sa montre (rythme
+///   cardiaque) se connecte depuis son espace uniquement.
+/// - Suivi cardiaque (admin, médecin, infirmier) : mesures envoyées par les
+///   téléphones des patients, lues dans la base.
 class AmbulanceDispatchScreen extends StatefulWidget {
   const AmbulanceDispatchScreen({super.key});
 
@@ -99,14 +102,15 @@ class _AmbulanceDispatchScreenState extends State<AmbulanceDispatchScreen> {
         appBar: AppBar(
           title: const Text('Ambulances & Interventions'),
           actions: [
-            IconButton(
-              tooltip: 'Surveillance cardiaque (montre)',
-              icon: const Icon(Icons.monitor_heart_outlined, color: AppColors.danger),
-              onPressed: () => Navigator.push<void>(
-                context,
-                MaterialPageRoute(builder: (_) => const SurveillanceCardiaqueScreen()),
+            if (role.suiviCardiaque)
+              IconButton(
+                tooltip: 'Suivi cardiaque des patients',
+                icon: const Icon(Icons.monitor_heart_outlined, color: AppColors.danger),
+                onPressed: () => Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SuiviCardiaqueScreen()),
+                ),
               ),
-            ),
             _menuSimulation(),
           ],
           bottom: TabBar(

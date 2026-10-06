@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../models/utilisateur.dart';
 import '../../../../shared_providers/session.dart';
+import '../../../ambulance_dispatch/presentation/screens/ambulance_dispatch_screen.dart';
 import '../../data/demo_store.dart';
 import '../widgets/app_background.dart';
 import '../widgets/floating_nav_bar.dart';
@@ -12,7 +13,8 @@ import 'tabs/home_tab.dart';
 import 'tabs/schedule_tab.dart';
 
 /// Écran principal : Accueil, Médecins, Planning, Santé
-/// (+ Gestion pour le personnel) avec barre de navigation flottante.
+/// (+ Gestion pour le personnel, + SOS pour le patient : ambulance et
+/// montre cardiaque) avec barre de navigation flottante.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -53,6 +55,9 @@ class _HomeScreenState extends State<HomeScreen> {
       const ScheduleTab(),
       const HealthTab(),
       if (personnel) const GestionTab(),
+      // Module 3 : le patient n'a pas l'onglet Gestion → accès direct au SOS
+      // (ambulance, alerte vocale, montre cardiaque).
+      if (!personnel) const AmbulanceDispatchScreen(),
     ];
     final List<NavItem> items = [
       const NavItem(Icons.home_rounded, 'Accueil'),
@@ -64,6 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       const NavItem(Icons.monitor_heart_rounded, 'Santé'),
       if (personnel) const NavItem(Icons.dashboard_customize_rounded, 'Gestion'),
+      if (!personnel) const NavItem(Icons.emergency_rounded, 'SOS'),
     ];
     final int index = _store.onglet < pages.length ? _store.onglet : 0;
 

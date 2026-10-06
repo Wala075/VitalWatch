@@ -9,6 +9,7 @@ import '../../../domain/models/ambulance.dart';
 import '../../../domain/models/ambulancier.dart';
 import '../../providers/dispatch_controller.dart';
 import '../../widgets/dispatch_ui.dart';
+import '../../widgets/rythme_patient.dart';
 import '../intervention_detail_screen.dart';
 import 'interventions_tab.dart';
 
@@ -83,6 +84,7 @@ class _MaMissionTabState extends State<MaMissionTab> {
         final Ambulance? amb = _ctrl.ambulanceParId(ambId);
         final InterventionDetail? mission = _ctrl.missionDe(ambId);
         final int? missionId = mission?.intervention.id;
+        final int? patientId = mission?.intervention.patientId;
 
         return ListView(
           padding: const EdgeInsets.all(16),
@@ -141,6 +143,11 @@ class _MaMissionTabState extends State<MaMissionTab> {
                           ),
                         ),
               ),
+            // Rythme cardiaque du patient pris en charge (montre du patient)
+            if (patientId != null) ...[
+              const SizedBox(height: 14),
+              RythmePatient(key: ValueKey<int>(patientId), patientId: patientId),
+            ],
           ],
         );
       },
