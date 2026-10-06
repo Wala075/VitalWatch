@@ -126,7 +126,80 @@ class AmbulanceSchema {
       if (nb == 0) {
         await _donneesDemo(txn);
       }
+      await _flotteNationale(txn);
     });
+  }
+
+  // =====================================================================
+  // Couverture nationale : bases du Grand Tunis, Sfax et Nabeul (avec leur
+  // équipage), pour qu'une ambulance proche vienne à la vraie position du
+  // patient. Ajoutées une seule fois, y compris sur une base déjà remplie
+  // (contrôle par immatriculation).
+  // =====================================================================
+
+  static const List<_BaseNationale> _basesNationales = [
+    _BaseNationale('233 TU 4410', 'C', 36.8030, 10.1560, 38400, 'SAMU Tunis (La Rabta)', [
+      ['Mehdi Gharbi', 'conducteur', '+21698310421'],
+      ['Ines Zribi', 'medecin', '+21622418503'],
+      ['Rami Jaziri', 'infirmier', '+21655207334'],
+    ]),
+    _BaseNationale('228 TU 6175', 'B', 36.8935, 10.1880, 51200, 'Ariana (El Ghazala)', [
+      ['Aymen Trabelsi', 'conducteur', '+21697541260'],
+      ['Salma Bouzid', 'secouriste', '+21624630918'],
+    ]),
+    _BaseNationale('219 TU 3352', 'A', 36.8150, 10.1810, 97300, 'Tunis (Lafayette)', [
+      ['Bilel Hammami', 'conducteur', '+21650872145'],
+      ['Nour Ben Salem', 'secouriste', '+21699114386'],
+    ]),
+    _BaseNationale('241 TU 0937', 'B', 36.8780, 10.3180, 64800, 'La Marsa', [
+      ['Yassine Mansour', 'conducteur', '+21693205571'],
+      ['Rania Kefi', 'infirmier', '+21628360492'],
+    ]),
+    _BaseNationale('236 TU 8814', 'B', 36.7540, 10.2280, 72650, 'Ben Arous', [
+      ['Hamdi Saidi', 'conducteur', '+21656148830'],
+      ['Olfa Ayadi', 'secouriste', '+21621907764'],
+    ]),
+    _BaseNationale('226 TU 5068', 'C', 34.7410, 10.7600, 45100, 'Sfax', [
+      ['Slim Kammoun', 'conducteur', '+21698652017'],
+      ['Mariem Ellouze', 'medecin', '+21623771450'],
+      ['Fedi Chaabane', 'infirmier', '+21654093286'],
+    ]),
+    _BaseNationale('231 TU 2741', 'B', 36.4510, 10.7350, 88900, 'Nabeul', [
+      ['Anis Bahri', 'conducteur', '+21697328815'],
+      ['Hela Mzoughi', 'secouriste', '+21625584037'],
+    ]),
+  ];
+
+  static Future<void> _flotteNationale(Transaction txn) async {
+    for (final _BaseNationale b in _basesNationales) {
+      final List<Map<String, Object?>> existe = await txn.query(
+        'ambulances',
+        columns: ['id'],
+        where: 'immatriculation = ?',
+        whereArgs: [b.immatriculation],
+        limit: 1,
+      );
+      if (existe.isNotEmpty) {
+        continue;
+      }
+      final int id = await txn.insert('ambulances', {
+        'immatriculation': b.immatriculation,
+        'type': b.type,
+        'statut': 'disponible',
+        'latitude': b.lat,
+        'longitude': b.lng,
+        'kilometrage': b.km,
+      });
+      for (final List<String> e in b.equipage) {
+        await txn.insert('ambulanciers', {
+          'nom': e[0],
+          'role': e[1],
+          'telephone': e[2],
+          'disponible': 1,
+          'ambulance_id': id,
+        });
+      }
+    }
   }
 
   // =====================================================================
@@ -351,6 +424,30 @@ class _Base {
   final double lat;
   final double lng;
   final int km;
+}
+
+class _BaseNationale {
+  const _BaseNationale(
+    this.immatriculation,
+    this.type,
+    this.lat,
+    this.lng,
+    this.km,
+    this.base,
+    this.equipage,
+  );
+
+  final String immatriculation;
+  final String type;
+  final double lat;
+  final double lng;
+  final int km;
+
+  /// Nom de la base (documentation des données de démo).
+  final String base;
+
+  /// [nom, rôle, téléphone] des équipiers affectés à l'ambulance.
+  final List<List<String>> equipage;
 }
 
 class _Lieu {

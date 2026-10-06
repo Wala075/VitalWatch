@@ -13,7 +13,8 @@ class Hopital {
   LatLng get position => LatLng(latitude, longitude);
 }
 
-/// Hôpitaux de destination (région du Sahel).
+/// Hôpitaux de destination (Sahel + grandes villes de Tunisie).
+/// Coordonnées : OpenStreetMap / Wikipédia (« List of hospitals in Tunisia »).
 class Hopitaux {
   Hopitaux._();
 
@@ -23,6 +24,14 @@ class Hopitaux {
     Hopital('CHU Fattouma Bourguiba', 'Monastir', 35.7650, 10.8125),
     Hopital('Hôpital régional de M\'saken', 'M\'saken', 35.7325, 10.5835),
     Hopital('CHU Tahar Sfar', 'Mahdia', 35.4990, 11.0560),
+    Hopital('Hôpital Charles-Nicolle', 'Tunis', 36.8022, 10.1611),
+    Hopital('Hôpital La Rabta', 'Tunis', 36.8019, 10.1544),
+    Hopital('Hôpital Habib Thameur', 'Tunis', 36.7864, 10.1767),
+    Hopital('Hôpital Mongi Slim', 'La Marsa', 36.8672, 10.2911),
+    Hopital('CHU Habib Bougatfa', 'Bizerte', 37.2722, 9.8603),
+    Hopital('Hôpital Taher Maamouri', 'Nabeul', 36.4381, 10.6742),
+    Hopital('CHU Ibn El Jazzar', 'Kairouan', 35.7994, 10.1025),
+    Hopital('CHU Hédi Chaker', 'Sfax', 34.7408, 10.7503),
   ];
 
   static Hopital plusProche(LatLng point) {

@@ -8,6 +8,7 @@ import '../../domain/dispatch_manager.dart';
 import '../../domain/dispatch_models.dart';
 import '../../domain/models/intervention.dart';
 import '../providers/dispatch_controller.dart';
+import '../widgets/ambulances_proches.dart';
 import '../widgets/dispatch_ui.dart';
 import '../widgets/ecoute_vocale.dart';
 import 'intervention_detail_screen.dart';
@@ -92,7 +93,7 @@ class _SosScreenState extends State<SosScreen> with SingleTickerProviderStateMix
         final bool demo = vocal ||
             await _proposerDemo(
               'Votre position (${position.latitude.toStringAsFixed(3)}, '
-              '${position.longitude.toStringAsFixed(3)}) est hors de la zone couverte.',
+              '${position.longitude.toStringAsFixed(3)}) est hors de Tunisie (zone couverte).',
             );
         if (!demo) {
           return;
@@ -118,7 +119,7 @@ class _SosScreenState extends State<SosScreen> with SingleTickerProviderStateMix
     }
   }
 
-  /// Émulateur / hors zone : utiliser une position de démonstration à Sousse.
+  /// Émulateur / hors de Tunisie : utiliser une position de démonstration à Sousse.
   Future<bool> _proposerDemo(String raison) {
     return showConfirmDialog(
       context,
@@ -156,6 +157,9 @@ class _SosScreenState extends State<SosScreen> with SingleTickerProviderStateMix
                 const SizedBox(height: 40),
                 Center(child: _boutonSos()),
                 const SizedBox(height: 28),
+                // Position réelle du patient + ambulances libres autour.
+                const CarteAmbulancesProches(),
+                const SizedBox(height: 16),
                 CarteEcouteVocale(
                   onAlerte: () => _envoyer(vocal: true),
                   peutAlerter: () => !_envoi,

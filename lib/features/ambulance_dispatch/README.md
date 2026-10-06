@@ -15,7 +15,15 @@ Branche : `feature/ambulances`
 
 Les tables sont créées avec `CREATE TABLE IF NOT EXISTS` au premier accès :
 `app_database.dart` (fichier commun) n'est pas modifié. Des données de démo
-(6 ambulances, 10 ambulanciers, 42 interventions sur 30 jours) sont insérées une fois.
+(6 ambulances, 10 ambulanciers, 42 interventions sur 30 jours) sont insérées une fois,
+puis 7 bases nationales avec équipage (SAMU Tunis, Ariana El Ghazala, Lafayette,
+La Marsa, Ben Arous, Sfax, Nabeul), ajoutées aussi sur une base existante.
+
+**Zone couverte : toute la Tunisie.** Le patient est secouru à sa vraie position GPS ;
+seule une position hors de Tunisie (émulateur) bascule sur la position de démo (Sousse).
+13 hôpitaux de destination (Sahel, Grand Tunis, Bizerte, Nabeul, Kairouan, Sfax).
+Espace patient : carte « Ambulances autour de vous » (sa position + ambulances libres en
+direct, la plus proche et son temps estimé) — `presentation/widgets/ambulances_proches.dart`.
 
 Compte de démo : `ambulancier@vitalwatch.tn` / `ambulancier123`.
 

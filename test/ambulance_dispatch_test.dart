@@ -86,4 +86,16 @@ void main() {
   test('hôpital le plus proche de Monastir', () {
     expect(Hopitaux.plusProche(monastir).nom, 'CHU Fattouma Bourguiba');
   });
+
+  test('zone couverte : toute la Tunisie', () {
+    expect(DispatchManager.dansZone(LatLng(36.8992, 10.1893)), isTrue); // Ariana
+    expect(DispatchManager.dansZone(LatLng(33.8815, 10.0982)), isTrue); // Gabès
+    expect(DispatchManager.dansZone(LatLng(48.8566, 2.3522)), isFalse); // Paris
+    expect(DispatchManager.dansZone(LatLng(37.4220, -122.0841)), isFalse); // émulateur
+  });
+
+  test('hôpital le plus proche hors du Sahel', () {
+    expect(Hopitaux.plusProche(LatLng(34.74, 10.76)).nom, 'CHU Hédi Chaker');
+    expect(Hopitaux.plusProche(LatLng(37.27, 9.87)).nom, 'CHU Habib Bougatfa');
+  });
 }

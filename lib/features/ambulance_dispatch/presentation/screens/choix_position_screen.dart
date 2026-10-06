@@ -84,7 +84,7 @@ class _ChoixPositionScreenState extends State<ChoixPositionScreen> {
       return;
     }
     if (!DispatchManager.dansZone(p)) {
-      DispatchUi.snack(context, 'Point hors de la zone couverte (région de Sousse)', erreur: true);
+      DispatchUi.snack(context, 'Point hors de la zone couverte (Tunisie)', erreur: true);
       return;
     }
     Navigator.pop(context, PositionChoisie(p, _adresse));

@@ -43,9 +43,16 @@ class DispatchManager {
   final MaintenanceRepository _maintenances;
   final NominatimApi _nominatim;
 
-  /// Zone couverte : 90 km autour de Sousse.
+  /// Centre par défaut des cartes et position de démonstration (Sousse).
   static final LatLng centreZone = LatLng(35.80, 10.66);
-  static const double rayonZoneKm = 90;
+
+  /// Zone couverte : toute la Tunisie (rectangle englobant). Le patient est
+  /// secouru à sa vraie position GPS ; seule une position hors de Tunisie
+  /// (émulateur, GPS faux) bascule sur la position de démonstration.
+  static const double latMin = 30.2;
+  static const double latMax = 37.6;
+  static const double lngMin = 7.4;
+  static const double lngMax = 11.7;
   static const int maxEquipiers = 4;
 
   static final RegExp _immatriculation =
@@ -54,7 +61,10 @@ class DispatchManager {
   Future<Database> get _db => AmbulanceSchema.database;
 
   static bool dansZone(LatLng p) =>
-      FormuleHaversine.distanceKm(centreZone, p) <= rayonZoneKm;
+      p.latitude >= latMin &&
+      p.latitude <= latMax &&
+      p.longitude >= lngMin &&
+      p.longitude <= lngMax;
 
   /// « 214tu5521 » → « 214 TU 5521 » ; null si le format est invalide.
   static String? normaliserImmatriculation(String saisie) {
@@ -82,7 +92,7 @@ class DispatchManager {
     }
     if (!dansZone(a.position)) {
       throw const DispatchException(
-        'La position doit se trouver dans la zone couverte (région de Sousse)',
+        'La position doit se trouver en Tunisie (zone couverte)',
       );
     }
 
@@ -334,9 +344,7 @@ class DispatchManager {
       throw const DispatchException("L'adresse de l'intervention est obligatoire");
     }
     if (!dansZone(position)) {
-      throw DispatchException(
-        'Lieu hors zone de couverture (${rayonZoneKm.round()} km autour de Sousse)',
-      );
+      throw const DispatchException('Lieu hors zone de couverture (Tunisie)');
     }
 
     // Anti-doublon : un patient n'a qu'une intervention ouverte

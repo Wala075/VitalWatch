@@ -59,7 +59,7 @@ class _CarteTabState extends State<CarteTab> {
       if (DispatchManager.dansZone(p)) {
         _carte.move(p, 14);
       } else {
-        DispatchUi.snack(context, 'Vous êtes hors de la zone couverte (région de Sousse)');
+        DispatchUi.snack(context, 'Vous êtes hors de la zone couverte (Tunisie)');
       }
     } on DispatchException catch (e) {
       if (mounted) {
