@@ -4,19 +4,31 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../data/api/ecoute_vocale_service.dart';
+import '../../data/api/protection_vocale_service.dart';
 import '../../domain/appel_aide.dart';
 import 'dispatch_ui.dart';
 
-/// Carte « Alerte vocale » : tant que l'écran est ouvert, le téléphone écoute
-/// « help », « au secours », « à l'aide »... ; compte à rebours de 10 s
-/// (annulable) puis [onAlerte] envoie l'ambulance.
+/// Carte « Alerte vocale » : le téléphone écoute « help », « au secours »,
+/// « à l'aide »... ; compte à rebours de 10 s (annulable) puis [onAlerte]
+/// envoie l'ambulance.
+///
+/// [partout] (espace patient) : écoute dans toute l'application, même si
+/// l'écran de la carte est caché, + option « même écran verrouillé ».
+/// Sinon : seulement quand l'écran de la carte est affiché.
 class CarteEcouteVocale extends StatefulWidget {
-  const CarteEcouteVocale({super.key, required this.onAlerte, this.peutAlerter});
+  const CarteEcouteVocale({
+    super.key,
+    required this.onAlerte,
+    this.peutAlerter,
+    this.partout = false,
+  });
 
   final Future<void> Function() onAlerte;
 
   /// Faux si une autre alerte est déjà affichée : l'appel vocal est ignoré.
   final bool Function()? peutAlerter;
+
+  final bool partout;
 
   @override
   State<CarteEcouteVocale> createState() => _CarteEcouteVocaleState();
@@ -24,18 +36,28 @@ class CarteEcouteVocale extends StatefulWidget {
 
 class _CarteEcouteVocaleState extends State<CarteEcouteVocale> {
   final EcouteVocaleService _ecoute = EcouteVocaleService.instance;
+  final ProtectionVocale _protection = ProtectionVocale.instance;
   bool _abonne = false;
+  bool _changement = false;
 
-  /// Micro actif seulement si l'écran est visible : onglet caché de
-  /// l'accueil (IndexedStack) ou écran recouvert → TickerMode désactivé.
+  @override
+  void initState() {
+    super.initState();
+    if (widget.partout) {
+      unawaited(_ecoute.restaurerPermanente());
+    }
+  }
+
+  /// [partout] : toujours abonné. Sinon micro actif seulement si l'écran est
+  /// visible (onglet caché de l'accueil ou écran recouvert → TickerMode off).
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final bool visible = TickerMode.of(context);
-    if (visible && !_abonne) {
+    final bool doit = widget.partout || TickerMode.valuesOf(context).enabled;
+    if (doit && !_abonne) {
       _ecoute.abonner(_surAppel);
       _abonne = true;
-    } else if (!visible && _abonne) {
+    } else if (!doit && _abonne) {
       _ecoute.desabonner(_surAppel);
       _abonne = false;
     }
@@ -55,21 +77,58 @@ class _CarteEcouteVocaleState extends State<CarteEcouteVocale> {
       _ecoute.reprendre();
       return;
     }
+    // Écran verrouillé / app en arrière-plan : la notification montre le
+    // compte à rebours avec un bouton « Annuler ».
+    final bool protection = _ecoute.permanente;
+    if (protection) {
+      unawaited(_protection.afficher(
+        "Appel à l'aide détecté",
+        '« ${appel.texte} » · ambulance dans 10 s',
+        annulable: true,
+      ));
+    }
     final bool? envoyer = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => DialogueAppelVocal(appel: appel),
+      builder: (_) => DialogueAppelVocal(
+        appel: appel,
+        boutons: protection ? _protection.boutons : null,
+      ),
     );
-    if (!mounted) {
-      _ecoute.reprendre();
-      return;
-    }
     if (envoyer == true) {
       await widget.onAlerte();
+      if (protection) {
+        unawaited(_protection.afficher(
+          'Ambulance envoyée',
+          'Ouvrez VitalWatch pour la suivre · protection vocale toujours active',
+        ));
+      }
     } else {
-      DispatchUi.snack(context, 'Alerte vocale annulée');
+      if (protection) {
+        unawaited(_protection.afficherEcoute());
+      }
+      if (mounted) {
+        DispatchUi.snack(context, 'Alerte vocale annulée');
+      }
     }
     _ecoute.reprendre();
+  }
+
+  Future<void> _basculerPermanente(bool oui) async {
+    setState(() => _changement = true);
+    final String? erreur = await _ecoute.activerPermanente(oui);
+    if (!mounted) {
+      return;
+    }
+    setState(() => _changement = false);
+    DispatchUi.snack(
+      context,
+      erreur ??
+          (oui
+              ? 'Protection active : « help » est entendu même écran verrouillé'
+              : 'Protection permanente coupée'),
+      erreur: erreur != null,
+    );
   }
 
   @override
@@ -127,9 +186,26 @@ class _CarteEcouteVocaleState extends State<CarteEcouteVocale> {
                   color: AppColors.textSecondary,
                 ),
               ),
-            const Info(
+            // Service de premier plan : Android uniquement.
+            if (widget.partout && Theme.of(context).platform == TargetPlatform.android)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: Icon(
+                  _ecoute.permanente ? Icons.lock_clock : Icons.lock_open_outlined,
+                  color: _ecoute.permanente ? AppColors.danger : AppColors.textSecondary,
+                ),
+                title: const Text('Même écran verrouillé'),
+                subtitle: const Text('Notification fixe · micro et GPS actifs en arrière-plan'),
+                value: _ecoute.permanente,
+                onChanged: _changement || !_ecoute.activee ? null : _basculerPermanente,
+              ),
+            Info(
               icone: Icons.info_outline,
-              texte: 'Écran ouvert uniquement · 10 s pour annuler',
+              texte: !widget.partout
+                  ? 'Écran ouvert uniquement · 10 s pour annuler'
+                  : (_ecoute.permanente
+                      ? 'Partout, même écran verrouillé · 10 s pour annuler'
+                      : 'Dans toute l\'application · 10 s pour annuler'),
             ),
           ],
         );
@@ -140,9 +216,13 @@ class _CarteEcouteVocaleState extends State<CarteEcouteVocale> {
 
 /// « Appel à l'aide détecté » : 10 s pour annuler, sinon l'ambulance part.
 class DialogueAppelVocal extends StatefulWidget {
-  const DialogueAppelVocal({super.key, required this.appel});
+  const DialogueAppelVocal({super.key, required this.appel, this.boutons});
 
   final AppelAide appel;
+
+  /// Boutons de la notification (écran verrouillé) : « Annuler » ferme aussi
+  /// ce dialogue.
+  final Stream<String>? boutons;
 
   @override
   State<DialogueAppelVocal> createState() => _DialogueAppelVocalState();
@@ -152,10 +232,17 @@ class _DialogueAppelVocalState extends State<DialogueAppelVocal> {
   static const int _delai = 10;
   int _restant = _delai;
   Timer? _minuterie;
+  StreamSubscription<String>? _notification;
 
   @override
   void initState() {
     super.initState();
+    _notification = widget.boutons?.listen((String id) {
+      if (mounted && id == ProtectionVocale.boutonAnnuler) {
+        _minuterie?.cancel();
+        Navigator.pop(context, false);
+      }
+    });
     _minuterie = Timer.periodic(const Duration(seconds: 1), (Timer t) {
       if (!mounted) {
         return;
@@ -172,6 +259,7 @@ class _DialogueAppelVocalState extends State<DialogueAppelVocal> {
   @override
   void dispose() {
     _minuterie?.cancel();
+    _notification?.cancel();
     super.dispose();
   }
 

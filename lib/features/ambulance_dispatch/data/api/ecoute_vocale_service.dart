@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../../domain/appel_aide.dart';
+import 'protection_vocale_service.dart';
 
 enum EtatEcoute {
   arretee('Écoute vocale désactivée'),
@@ -23,9 +25,11 @@ enum EtatEcoute {
 typedef EcouteurAppelAide = void Function(AppelAide appel);
 
 /// Écoute vocale continue (package speech_to_text, reconnaissance vocale du
-/// téléphone) tant qu'un écran abonné est ouvert et l'application au premier
-/// plan. La reconnaissance Android s'arrête après quelques secondes de
-/// silence : elle est relancée automatiquement.
+/// téléphone) tant qu'un écran est abonné : application au premier plan, ou
+/// partout (arrière-plan, écran verrouillé) quand la protection permanente
+/// est active ([ProtectionVocale], service de premier plan Android).
+/// La reconnaissance Android s'arrête après quelques secondes de silence :
+/// elle est relancée automatiquement.
 ///
 /// Un seul micro : service unique, seul le dernier écran abonné (celui du
 /// dessus) reçoit les appels à l'aide.
@@ -39,11 +43,12 @@ class EcouteVocaleService extends ChangeNotifier {
   AppLifecycleListener? _cycle;
   Timer? _relance;
   bool _initialise = false;
-  bool _initEnCours = false;
   bool _lancement = false;
   bool _activee = true;
   bool _suspendue = false;
   bool _premierPlan = true;
+  bool _permanente = false;
+  bool _restauree = false;
   int _erreurs = 0;
   String? _langue;
   EtatEcoute _etat = EtatEcoute.arretee;
@@ -57,8 +62,14 @@ class EcouteVocaleService extends ChangeNotifier {
   /// Interrupteur « Alerte vocale » (pour toute la session).
   bool get activee => _activee;
 
+  /// Protection « même écran verrouillé » active.
+  bool get permanente => _permanente;
+
+  /// Application visible (sinon : arrière-plan ou écran verrouillé).
+  bool get premierPlan => _premierPlan;
+
   bool get _doitEcouter =>
-      _activee && _abonnes.isNotEmpty && !_suspendue && _premierPlan;
+      _activee && _abonnes.isNotEmpty && !_suspendue && (_premierPlan || _permanente);
 
   /// Appelé depuis initState / dispose : la mise à jour (qui notifie les
   /// écrans) est différée après la construction de l'arbre de widgets.
@@ -70,12 +81,73 @@ class EcouteVocaleService extends ChangeNotifier {
 
   void desabonner(EcouteurAppelAide ecouteur) {
     _abonnes.remove(ecouteur);
+    if (_abonnes.isEmpty) {
+      // Déconnexion du patient : plus personne n'écoute, on coupe le
+      // service ; la préférence est gardée et relue à la prochaine connexion.
+      _restauree = false;
+      if (_permanente) {
+        _permanente = false;
+        unawaited(ProtectionVocale.instance.arreter());
+      }
+    }
     scheduleMicrotask(_mettreAJour);
+  }
+
+  /// Active ou coupe la protection permanente. Renvoie un message d'erreur
+  /// ou null. À appeler app au premier plan (exigence d'Android).
+  Future<String?> activerPermanente(bool oui) async {
+    if (!oui) {
+      _permanente = false;
+      notifyListeners();
+      await ProtectionVocale.instance.arreter();
+      await ProtectionVocale.instance.enregistrerPreference(false);
+      _mettreAJour();
+      return null;
+    }
+    // Micro autorisé d'abord : Android refuse un service « micro » sinon.
+    _activee = true;
+    await _demarrer();
+    if (!_initialise) {
+      return _etat == EtatEcoute.refusee
+          ? 'Autorisez le micro pour activer la protection'
+          : 'Reconnaissance vocale indisponible sur ce téléphone';
+    }
+    bool gps = false;
+    try {
+      final LocationPermission p = await Geolocator.checkPermission();
+      gps = p == LocationPermission.always || p == LocationPermission.whileInUse;
+    } catch (_) {
+      gps = false;
+    }
+    final String? erreur = await ProtectionVocale.instance.demarrer(localisation: gps);
+    if (erreur != null) {
+      return 'Protection impossible : $erreur';
+    }
+    _permanente = true;
+    notifyListeners();
+    await ProtectionVocale.instance.enregistrerPreference(true);
+    _mettreAJour();
+    return null;
+  }
+
+  /// Au premier affichage de l'espace patient : réactive la protection si
+  /// le patient l'avait laissée activée.
+  Future<void> restaurerPermanente() async {
+    if (_restauree) {
+      return;
+    }
+    _restauree = true;
+    if (await ProtectionVocale.instance.preference()) {
+      await activerPermanente(true);
+    }
   }
 
   void activer(bool oui) {
     _activee = oui;
     _erreurs = 0;
+    if (!oui && _permanente) {
+      unawaited(activerPermanente(false));
+    }
     _mettreAJour();
   }
 
@@ -99,6 +171,7 @@ class EcouteVocaleService extends ChangeNotifier {
     } else if (s == AppLifecycleState.paused ||
         s == AppLifecycleState.hidden ||
         s == AppLifecycleState.detached) {
+      // Protection permanente : l'écoute continue (service de premier plan).
       _premierPlan = false;
       _mettreAJour();
     }
@@ -112,36 +185,42 @@ class EcouteVocaleService extends ChangeNotifier {
     }
   }
 
+  Future<void>? _initEnCours;
+
   Future<void> _demarrer() async {
     if (!_initialise) {
-      if (_initEnCours) {
+      // Une seule initialisation à la fois (abonnement + restauration).
+      final Future<void> init = _initEnCours ??= _initialiser();
+      await init;
+      _initEnCours = null;
+      if (!_initialise) {
         return;
       }
-      _initEnCours = true;
-      _changer(EtatEcoute.demarrage);
-      bool ok = false;
-      try {
-        // Demande l'autorisation du micro au premier lancement.
-        ok = await _stt.initialize(onStatus: _statut, onError: _erreur);
-      } catch (_) {
-        ok = false;
-      }
-      if (!ok) {
-        bool micro = true;
-        try {
-          micro = await _stt.hasPermission;
-        } catch (_) {
-          micro = true;
-        }
-        _initEnCours = false;
-        _changer(micro ? EtatEcoute.indisponible : EtatEcoute.refusee);
-        return;
-      }
-      _langue = await _choisirLangue();
-      _initialise = true;
-      _initEnCours = false;
     }
     await _ecouter();
+  }
+
+  Future<void> _initialiser() async {
+    _changer(EtatEcoute.demarrage);
+    bool ok = false;
+    try {
+      // Demande l'autorisation du micro au premier lancement.
+      ok = await _stt.initialize(onStatus: _statut, onError: _erreur);
+    } catch (_) {
+      ok = false;
+    }
+    if (!ok) {
+      bool micro = true;
+      try {
+        micro = await _stt.hasPermission;
+      } catch (_) {
+        micro = true;
+      }
+      _changer(micro ? EtatEcoute.indisponible : EtatEcoute.refusee);
+      return;
+    }
+    _langue = await _choisirLangue();
+    _initialise = true;
   }
 
   /// Français si disponible (« au secours », « à l'aide ») ; « help » est

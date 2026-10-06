@@ -131,6 +131,16 @@ automatique après chaque silence, coupure en arrière-plan).
   surveillance cardiaque, `creerDepuisAlerte` (urgente, critique si le dernier
   rythme est ≥ 150 ou ≤ 40 bpm).
 
+Espace patient : l'écoute marche **dans toute l'application** (accueil, planning…),
+pas seulement sur l'écran SOS (onglet « SOS » de la barre du bas).
+
+**Même écran verrouillé** (interrupteur de la carte, Android) : `flutter_foreground_task`
+démarre un service de premier plan (types `microphone|location`, notification fixe) qui
+garde l'application active. « help » entendu → notification « Appel à l'aide détecté ·
+ambulance dans 10 s » avec un bouton **Annuler** ; sans réponse, SOS envoyé (GPS, ou
+position de démo). Choix mémorisé (`data/api/protection_vocale_service.dart`).
+Ne pas fermer l'application depuis les applications récentes (l'écoute s'arrêterait).
+
 Android émet un petit bip à chaque relance de l'écoute (comportement du système).
 
 ## Intégration module 2 (alertes vitales)

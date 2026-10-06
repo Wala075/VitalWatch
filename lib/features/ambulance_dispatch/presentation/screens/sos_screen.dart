@@ -159,6 +159,7 @@ class _SosScreenState extends State<SosScreen> with SingleTickerProviderStateMix
                 CarteEcouteVocale(
                   onAlerte: () => _envoyer(vocal: true),
                   peutAlerter: () => !_envoi,
+                  partout: true,
                 ),
                 const SizedBox(height: 16),
                 OutlinedButton.icon(
@@ -191,6 +192,13 @@ class _SosScreenState extends State<SosScreen> with SingleTickerProviderStateMix
                   onPressed: () => _suivre(demande.intervention),
                   icon: const Icon(Icons.map_outlined),
                   label: const Text("Suivre l'ambulance sur la carte"),
+                ),
+                // L'écoute « help » continue pendant l'intervention.
+                const SizedBox(height: 16),
+                CarteEcouteVocale(
+                  onAlerte: () => _envoyer(vocal: true),
+                  peutAlerter: () => !_envoi,
+                  partout: true,
                 ),
               ],
             ],
