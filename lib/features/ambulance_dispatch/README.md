@@ -90,7 +90,11 @@ La montre est connectée et synchronisée pendant toute la session du patient
 - **Accueil** du patient : « Votre santé aujourd'hui » affiche les vraies données
   (rythme exact + mini-courbe, pas + calories, batterie + charge, état Bluetooth,
   heure de synchro) — `presentation/widgets/carte_montre_patient.dart` ;
-- détail (onglet SOS → « Surveiller mon rythme » ou toucher la carte de l'accueil) ;
+- onglet **Santé** du patient : fréquence cardiaque réelle (dernière mesure, heure,
+  état / seuils, tracé au rythme mesuré, « EN DIRECT » seulement si la montre est
+  synchronisée), carte « Ma montre » (batterie, signal, pas, calories, rythme du jour,
+  modèle, synchro) et pas d'aujourd'hui heure par heure — `widgets/sante_montre.dart` ;
+- détail (onglet SOS → « Surveiller mon rythme » ou toucher une carte) ;
 - alertes « Ça va ? » affichées où que soit le patient (`widgets/hote_montre_patient.dart`),
   y compris écran verrouillé avec la protection vocale (bouton « Annuler » dans la notification).
 

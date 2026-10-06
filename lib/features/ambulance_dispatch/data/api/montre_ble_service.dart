@@ -91,6 +91,13 @@ class MontreBleService {
     return total;
   }
 
+  /// Activité d'aujourd'hui heure par heure (pas, calories), dans l'ordre.
+  List<ResumeActivite> get activiteDuJour {
+    final List<ResumeActivite> res = _activiteDuJour();
+    res.sort((ResumeActivite a, ResumeActivite b) => a.heure.compareTo(b.heure));
+    return res;
+  }
+
   /// Relevés cardiaques d'aujourd'hui (statistiques min / moyenne / max).
   List<MesureCardiaque> get relevesAujourdhui {
     final DateTime minuit = _minuit();
