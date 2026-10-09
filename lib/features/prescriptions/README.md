@@ -10,7 +10,7 @@ traitement, remboursement CNAM / mutuelle et paiement du reste à charge.
 | Étape | Contenu | État |
 |---|---|---|
 | 1 | Tables, déclencheurs, modèles, repositories, données de test | fait |
-| 2 | Écrans admin : catalogue, assurances, taux, APCI | à faire |
+| 2 | Écrans admin : catalogue, assurances, taux, APCI | fait |
 | 3 | Ordonnances côté médecin (cycle de vie, boîtes, verrouillage) | à faire |
 | 4 | Planning des prises, observance, fin de stock, renouvellement | à faire |
 | 5 | Prise en charge, dossiers, service CNAM simulé, plafond | à faire |
@@ -54,6 +54,20 @@ Déclencheurs (refus directement dans la base) :
 
 Dates : `2026-10-09` pour les dates, `2026-10-09 08:00:00` (heure locale) pour les
 heures, même format que `datetime()` de SQLite.
+
+## Écrans (`presentation/`)
+
+`PrescriptionsScreen` : onglets selon le profil, barre flottante de l'accueil.
+
+| Onglet | Profils | Contenu |
+|---|---|---|
+| Catalogue | tous (sauf ambulancier) ; modification : admin | recherche nom / DCI, filtres catégorie et générique, tri par prix, archivage |
+| Assurances | admin | organismes, plafond, délai de réponse, taux par catégorie (`tous` pour une mutuelle) |
+| APCI | admin | codes CIM-10 pris en charge à 100 % |
+
+Règles : `domain/referentiels_manager.dart` (base) et `domain/regles_referentiels.dart`
+(contrôles purs, testés). Un médicament déjà prescrit est archivé au lieu d'être
+supprimé ; une assurance ou un code APCI utilisé par un contrat ne se supprime pas.
 
 ## Rôle pharmacien
 

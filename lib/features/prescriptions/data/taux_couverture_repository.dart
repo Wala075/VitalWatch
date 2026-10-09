@@ -39,6 +39,18 @@ class TauxCouvertureRepository {
     return (rows.first['taux'] as num).toDouble();
   }
 
+  /// Remplace tous les taux d'une assurance (formulaire admin).
+  Future<void> remplacer(int assuranceId, List<TauxCouverture> taux, {DatabaseExecutor? exec}) async {
+    final DatabaseExecutor e = exec ?? await _db;
+    await e.delete('taux_couverture', where: 'assurance_id = ?', whereArgs: [assuranceId]);
+    for (final TauxCouverture t in taux) {
+      await e.insert(
+        'taux_couverture',
+        TauxCouverture(assuranceId: assuranceId, categorie: t.categorie, taux: t.taux).toMap(),
+      );
+    }
+  }
+
   /// Ajoute ou remplace le taux d'une catégorie.
   Future<void> enregistrer(TauxCouverture t, {DatabaseExecutor? exec}) async {
     final DatabaseExecutor e = exec ?? await _db;

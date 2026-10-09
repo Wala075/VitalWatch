@@ -36,17 +36,31 @@ class AssuranceRepository {
     return rows.isNotEmpty;
   }
 
-  /// Suppression permise seulement si aucun contrat n'y est lié.
-  Future<bool> aDesContrats(int id) async {
+  /// Une seule assurance obligatoire (CNAM).
+  Future<bool> cnamExiste({int? exclureId}) async {
     final Database db = await _db;
     final List<Map<String, Object?>> rows = await db.query(
-      'contrat_assurance',
+      'assurance',
       columns: ['id'],
-      where: 'assurance_id = ?',
-      whereArgs: [id],
+      where: "type = 'cnam' AND id != ?",
+      whereArgs: [exclureId ?? -1],
       limit: 1,
     );
     return rows.isNotEmpty;
+  }
+
+  /// Suppression permise seulement si aucun contrat n'y est lié.
+  Future<bool> aDesContrats(int id) async {
+    return await nombreContrats(id) > 0;
+  }
+
+  Future<int> nombreContrats(int id) async {
+    final Database db = await _db;
+    return Sqflite.firstIntValue(await db.rawQuery(
+          'SELECT COUNT(*) FROM contrat_assurance WHERE assurance_id = ?',
+          [id],
+        )) ??
+        0;
   }
 
   Future<int> inserer(Assurance a, {DatabaseExecutor? exec}) async {
