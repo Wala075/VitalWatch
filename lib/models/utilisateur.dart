@@ -1,4 +1,4 @@
-enum Role { admin, medecin, infirmier, ambulancier, patient }
+enum Role { admin, medecin, infirmier, ambulancier, patient, pharmacien }
 
 /// Compte de connexion. [refId] pointe vers le médecin ou le patient lié.
 class Utilisateur {
@@ -67,6 +67,8 @@ extension RoleLibelle on Role {
         return 'Ambulancier';
       case Role.patient:
         return 'Patient';
+      case Role.pharmacien:
+        return 'Pharmacien';
     }
   }
 }
