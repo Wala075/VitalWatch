@@ -7,11 +7,23 @@ import '../../domain/prescriptions_permissions.dart';
 import '../widgets/ui_commun.dart';
 import 'tabs/apci_tab.dart';
 import 'tabs/assurances_tab.dart';
+import 'tabs/aujourdhui_tab.dart';
 import 'tabs/catalogue_tab.dart';
+import 'tabs/delivrance_tab.dart';
+import 'tabs/dossiers_tab.dart';
+import 'tabs/mes_ordonnances_tab.dart';
 import 'tabs/ordonnances_tab.dart';
+import 'tabs/patients_tab.dart';
+import 'tabs/remboursements_tab.dart';
+import 'tabs/stats_tab.dart';
 
 /// MODULE 5 — Ordonnances & Assurance.
-/// Les onglets dépendent du profil connecté (voir PrescriptionsPermissions).
+/// Les onglets dépendent du profil connecté (voir PrescriptionsPermissions) :
+/// - admin : catalogue, assurances, APCI, patients, dossiers, statistiques ;
+/// - médecin : ses ordonnances, catalogue, statistiques ;
+/// - pharmacien : délivrance, catalogue ;
+/// - infirmier : patients, catalogue ;
+/// - patient : aujourd'hui, ses ordonnances, ses remboursements.
 class PrescriptionsScreen extends StatefulWidget {
   const PrescriptionsScreen({super.key});
 
@@ -33,30 +45,81 @@ class _PrescriptionsScreenState extends State<PrescriptionsScreen> {
       );
     }
 
-    // Le compte médecin pointe vers medecins.id via utilisateurs.ref_id.
-    final int? medecinId = Session.utilisateur?.refId;
+    // Le compte pointe vers medecins.id ou patients.id via utilisateurs.ref_id.
+    final int? refId = Session.utilisateur?.refId;
+    if ((role.prescrire || role.espacePatient) && refId == null) {
+      return const PlaceholderView(
+        title: 'Ordonnances & Assurance',
+        icon: Icons.link_off_rounded,
+        message: "Ce compte n'est relié à aucune fiche",
+      );
+    }
 
-    final List<_Onglet> onglets = [
-      if (role.prescrire && medecinId != null)
-        _Onglet(
+    final List<_Onglet> onglets = [];
+    if (role.espacePatient && refId != null) {
+      onglets.add(_Onglet(
+        const NavItem(Icons.today_rounded, "Aujourd'hui"),
+        (Key k) => AujourdhuiTab(key: k, patientId: refId),
+      ));
+      onglets.add(_Onglet(
+        const NavItem(Icons.description_rounded, 'Ordonnances'),
+        (Key k) => MesOrdonnancesTab(key: k, patientId: refId),
+      ));
+      onglets.add(_Onglet(
+        const NavItem(Icons.receipt_long_rounded, 'Remboursements'),
+        (Key k) => RemboursementsTab(key: k, patientId: refId),
+      ));
+    } else {
+      if (role.prescrire && refId != null) {
+        onglets.add(_Onglet(
           const NavItem(Icons.description_rounded, 'Ordonnances'),
-          (Key k) => OrdonnancesTab(key: k, medecinId: medecinId),
-        ),
-      _Onglet(
+          (Key k) => OrdonnancesTab(key: k, medecinId: refId),
+        ));
+      }
+      if (role.delivrer) {
+        onglets.add(_Onglet(
+          const NavItem(Icons.qr_code_scanner_rounded, 'Délivrance'),
+          (Key k) => DelivranceTab(key: k),
+        ));
+      }
+      if (role.voirPatients && !role.gererReferentiels) {
+        onglets.add(_Onglet(
+          const NavItem(Icons.people_alt_rounded, 'Patients'),
+          (Key k) => PatientsTab(key: k, role: role),
+        ));
+      }
+      onglets.add(_Onglet(
         const NavItem(Icons.medication_rounded, 'Catalogue'),
         (Key k) => CatalogueTab(key: k, role: role),
-      ),
-      if (role.gererReferentiels) ...[
-        _Onglet(
+      ));
+      if (role.gererReferentiels) {
+        onglets.add(_Onglet(
           const NavItem(Icons.shield_rounded, 'Assurances'),
           (Key k) => AssurancesTab(key: k, role: role),
-        ),
-        _Onglet(
+        ));
+        onglets.add(_Onglet(
           const NavItem(Icons.favorite_rounded, 'APCI'),
           (Key k) => ApciTab(key: k, role: role),
-        ),
-      ],
-    ];
+        ));
+        onglets.add(_Onglet(
+          const NavItem(Icons.people_alt_rounded, 'Patients'),
+          (Key k) => PatientsTab(key: k, role: role),
+        ));
+      }
+      if (role.traiterDossiers) {
+        onglets.add(_Onglet(
+          const NavItem(Icons.receipt_long_rounded, 'Dossiers'),
+          (Key k) => DossiersTab(key: k),
+        ));
+      }
+      if (role.voirStatistiques) {
+        final int? medecinId = role.prescrire ? refId : null;
+        onglets.add(_Onglet(
+          const NavItem(Icons.insights_rounded, 'Stats'),
+          (Key k) => StatsTab(key: k, medecinId: medecinId),
+        ));
+      }
+    }
     final int index = _onglet < onglets.length ? _onglet : 0;
 
     // Seul l'onglet affiché est construit : ses données sont rechargées

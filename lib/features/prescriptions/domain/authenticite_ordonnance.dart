@@ -33,8 +33,32 @@ class AuthenticiteOrdonnance {
     return hash != null && hash == signer(o, lignes);
   }
 
+  static const String _prefixeQr = 'VITALWATCH';
+
   /// Contenu du QR code imprimé sur l'ordonnance.
   static String contenuQr(Ordonnance o) {
-    return 'VITALWATCH|${o.numero}|${o.hashSignature ?? ''}';
+    return '$_prefixeQr|${o.numero}|${o.hashSignature ?? ''}';
   }
+
+  /// Lit un QR code VitalWatch ou un numéro saisi à la main (ORD-2026-0001).
+  static QrOrdonnance? lire(String saisie) {
+    final String t = saisie.trim();
+    if (t.isEmpty) {
+      return null;
+    }
+    final List<String> parties = t.split('|');
+    if (parties.length == 3 && parties[0] == _prefixeQr) {
+      final String hash = parties[2].trim();
+      return QrOrdonnance(numero: parties[1].trim(), hash: hash.isEmpty ? null : hash);
+    }
+    return QrOrdonnance(numero: t.toUpperCase());
+  }
+}
+
+/// Contenu lu sur une ordonnance : numéro, et hash si c'est un QR code.
+class QrOrdonnance {
+  const QrOrdonnance({required this.numero, this.hash});
+
+  final String numero;
+  final String? hash;
 }

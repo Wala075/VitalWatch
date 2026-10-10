@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../domain/dates_sql.dart';
 import '../domain/models/dossier_remboursement.dart';
+import '../domain/models/vues_remboursement.dart';
 import 'numerotation.dart';
 import 'prescriptions_schema.dart';
 
@@ -30,6 +31,61 @@ class DossierRemboursementRepository {
       ORDER BY d.id DESC
     ''', args);
     return _liste(rows);
+  }
+
+  static const String _selectResume = '''
+    SELECT d.*, o.numero AS o_numero, o.patient_id AS o_patient_id,
+      o.date_emission AS o_date_emission,
+      p.prenom AS p_prenom, p.nom AS p_nom,
+      a.nom AS a_nom, a.delai_reponse_jours AS a_delai
+    FROM dossier_remboursement d
+    JOIN ordonnance o ON o.id = d.ordonnance_id
+    LEFT JOIN patients p ON p.id = o.patient_id
+    LEFT JOIN contrat_assurance c ON c.id = d.contrat_id
+    LEFT JOIN assurance a ON a.id = c.assurance_id
+  ''';
+
+  /// Dossiers avec numéro d'ordonnance, patient et assurance.
+  Future<List<DossierResume>> listerResumes({int? patientId, StatutDossier? statut}) async {
+    final Database db = await _db;
+    final List<String> conditions = [];
+    final List<Object?> args = [];
+    if (patientId != null) {
+      conditions.add('o.patient_id = ?');
+      args.add(patientId);
+    }
+    if (statut != null) {
+      conditions.add('d.statut = ?');
+      args.add(statut.valeur);
+    }
+    final String where = conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
+    final List<Map<String, Object?>> rows =
+        await db.rawQuery('$_selectResume $where ORDER BY d.id DESC', args);
+    final List<DossierResume> res = [];
+    for (final Map<String, Object?> r in rows) {
+      res.add(_resume(r));
+    }
+    return res;
+  }
+
+  Future<DossierResume?> resume(int id) async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows =
+        await db.rawQuery('$_selectResume WHERE d.id = ?', [id]);
+    return rows.isEmpty ? null : _resume(rows.first);
+  }
+
+  DossierResume _resume(Map<String, Object?> r) {
+    final Object? pNom = r['p_nom'];
+    return DossierResume(
+      dossier: DossierRemboursement.fromMap(r),
+      ordonnanceNumero: r['o_numero'] as String,
+      dateOrdonnance: DatesSql.lire(r['o_date_emission']),
+      patientId: r['o_patient_id'] as int,
+      patientNom: pNom == null ? 'Patient supprimé' : '${r['p_prenom']} $pNom',
+      assuranceNom: (r['a_nom'] as String?) ?? 'CNAM',
+      delaiReponseJours: (r['a_delai'] as int?) ?? 30,
+    );
   }
 
   Future<DossierRemboursement?> parId(int id) async {

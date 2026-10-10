@@ -19,6 +19,7 @@ import '../../domain/regles_ordonnance.dart';
 import '../../domain/saisie.dart';
 import '../widgets/dialogues_ordonnance.dart';
 import '../widgets/elements_ui.dart';
+import '../widgets/substitution_sheet.dart';
 
 /// Ajout / modification d'une ligne d'un brouillon : médicament, posologie,
 /// durée. Le nombre de boîtes se calcule pendant la saisie.
@@ -98,6 +99,21 @@ class _LigneFormScreenState extends State<LigneFormScreen> {
     }
   }
 
+  /// Boîtes pour la posologie saisie (au moins 1), pour chiffrer l'économie.
+  int _boitesEstimees(Medicament m) {
+    final double dose = Saisie.decimal(_doseCtrl.text) ?? 0;
+    final int duree = int.tryParse(_dureeCtrl.text.trim()) ?? 0;
+    if (dose <= 0 || duree < 1 || _moments.isEmpty) {
+      return 1;
+    }
+    return CalculBoites.calculer(
+      dosePrise: dose,
+      prisesParJour: _moments.length,
+      dureeJours: duree,
+      unitesParBoite: m.unitesParBoite,
+    );
+  }
+
   void _basculerMoment(String m) {
     setState(() {
       if (_moments.contains(m)) {
@@ -168,6 +184,21 @@ class _LigneFormScreenState extends State<LigneFormScreen> {
               icon: Icons.medication_outlined,
               children: [
                 _CarteChoix(medicament: m, onTap: _enregistrement ? null : _choisirMedicament),
+                if (m != null && _substitution)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => afficherSubstitution(
+                        context,
+                        medicament: m,
+                        patientId: widget.ordonnance.patientId,
+                        boites: _boitesEstimees(m),
+                        onChoisir: (Medicament choisi) => setState(() => _medicament = choisi),
+                      ),
+                      icon: const Icon(Icons.recycling_rounded, size: 18),
+                      label: const Text('Génériques moins chers (RxNorm)'),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 12),

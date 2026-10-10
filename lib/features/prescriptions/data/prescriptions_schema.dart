@@ -81,8 +81,30 @@ class PrescriptionsSchema {
         await PrescriptionsDemo.inserer(txn);
       }
 
+      // Historique de démo (dossiers, statistiques) : une seule fois,
+      // y compris sur une base déjà remplie avant cette version.
+      if (await _lireMeta(txn, 'demo_historique') == null) {
+        await PrescriptionsDemo.historique(txn);
+        await txn.insert(
+          'prescriptions_meta',
+          {'cle': 'demo_historique', 'valeur': DatesSql.date(DateTime.now())},
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+
       await txn.rawUpdate(sqlExpiration, [DatesSql.date(DateTime.now())]);
     });
+  }
+
+  static Future<String?> _lireMeta(Transaction txn, String cle) async {
+    final List<Map<String, Object?>> rows = await txn.query(
+      'prescriptions_meta',
+      columns: ['valeur'],
+      where: 'cle = ?',
+      whereArgs: [cle],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first['valeur'] as String?;
   }
 
   /// Compte de démo du pharmacien (délivrance des ordonnances).
@@ -229,6 +251,14 @@ class PrescriptionsSchema {
       UNIQUE (assurance_id, numero_adherent, beneficiaire),
       CHECK (date_fin IS NULL OR date_fin > date_debut),
       CHECK (apci = 0 OR code_apci IS NOT NULL)
+    )
+    ''',
+
+    // Réglages internes du module (versions des données de démo).
+    '''
+    CREATE TABLE IF NOT EXISTS prescriptions_meta (
+      cle    TEXT PRIMARY KEY,
+      valeur TEXT
     )
     ''',
 

@@ -130,6 +130,22 @@ class OrdonnanceRepository {
     return rows.isEmpty ? null : _resume(rows.first);
   }
 
+  /// Coordonnées du médecin et du patient pour le PDF.
+  Future<Map<String, Object?>?> entete(int id) async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows = await db.rawQuery('''
+      SELECT m.specialite AS m_specialite, m.matricule AS m_matricule,
+        m.telephone AS m_telephone, m.email AS m_email,
+        p.cin AS p_cin, p.date_naissance AS p_date_naissance,
+        p.telephone AS p_telephone, p.groupe_sanguin AS p_groupe
+      FROM ordonnance o
+      LEFT JOIN medecins m ON m.id = o.medecin_id
+      LEFT JOIN patients p ON p.id = o.patient_id
+      WHERE o.id = ?
+    ''', [id]);
+    return rows.isEmpty ? null : rows.first;
+  }
+
   OrdonnanceResume _resume(Map<String, Object?> r) {
     final Object? pNom = r['p_nom'];
     final Object? mNom = r['m_nom'];

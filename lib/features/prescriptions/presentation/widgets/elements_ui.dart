@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../domain/models/dossier_remboursement.dart';
 import '../../domain/models/medicament.dart';
 import '../../domain/models/ordonnance.dart';
 
@@ -297,6 +298,51 @@ class StyleStatut {
   }
 
   static BadgeStatut badge(StatutOrdonnance s) {
+    return BadgeStatut(libelle: s.libelle, icon: icone(s), couleur: couleur(s));
+  }
+}
+
+/// Couleur, icône et badge de chaque statut de dossier de remboursement.
+class StyleDossier {
+  StyleDossier._();
+
+  static Color couleur(StatutDossier s) {
+    switch (s) {
+      case StatutDossier.brouillon:
+        return AppColors.textSecondary;
+      case StatutDossier.soumis:
+      case StatutDossier.enCours:
+        return AppColors.warning;
+      case StatutDossier.accepte:
+      case StatutDossier.partiel:
+        return AppColors.primary;
+      case StatutDossier.refuse:
+        return AppColors.danger;
+      case StatutDossier.rembourse:
+        return AppColors.success;
+    }
+  }
+
+  static IconData icone(StatutDossier s) {
+    switch (s) {
+      case StatutDossier.brouillon:
+        return Icons.edit_note_rounded;
+      case StatutDossier.soumis:
+        return Icons.outbox_rounded;
+      case StatutDossier.enCours:
+        return Icons.hourglass_top_rounded;
+      case StatutDossier.accepte:
+        return Icons.thumb_up_alt_outlined;
+      case StatutDossier.partiel:
+        return Icons.incomplete_circle_rounded;
+      case StatutDossier.refuse:
+        return Icons.block_rounded;
+      case StatutDossier.rembourse:
+        return Icons.savings_rounded;
+    }
+  }
+
+  static BadgeStatut badge(StatutDossier s) {
     return BadgeStatut(libelle: s.libelle, icon: icone(s), couleur: couleur(s));
   }
 }

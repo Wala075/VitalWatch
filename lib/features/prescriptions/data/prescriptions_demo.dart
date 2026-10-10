@@ -2,10 +2,12 @@ import 'package:sqflite/sqflite.dart';
 
 import '../domain/authenticite_ordonnance.dart';
 import '../domain/calcul_boites.dart';
+import '../domain/calcul_prise_en_charge.dart';
 import '../domain/dates_sql.dart';
 import '../domain/models/apci.dart';
 import '../domain/models/assurance.dart';
 import '../domain/models/contrat_assurance.dart';
+import '../domain/models/dossier_remboursement.dart';
 import '../domain/models/ligne_ordonnance.dart';
 import '../domain/models/medicament.dart';
 import '../domain/models/ordonnance.dart';
@@ -580,6 +582,248 @@ class PrescriptionsDemo {
     );
   }
 
+  // =====================================================================
+  // Historique (5 derniers mois) : ordonnances délivrées et dossiers de
+  // remboursement, pour les statistiques, le refus et la relance.
+  // =====================================================================
+
+  static Future<void> historique(Transaction txn) async {
+    if (!await _existe(txn, 'patients', 1) ||
+        !await _existe(txn, 'patients', 2) ||
+        !await _existe(txn, 'medecins', 1) ||
+        !await _existe(txn, 'medecins', 2)) {
+      return;
+    }
+    await _ordonnanceHistorique(
+      txn,
+      patientId: 1,
+      medecinId: 1,
+      joursAvant: 150,
+      lignes: const [
+        _Ligne('Clamoxyl', ['matin', 'midi', 'soir'], 7),
+        _Ligne('Doliprane', ['matin', 'midi', 'soir'], 5),
+      ],
+      dossier: const _DossierDemo(StatutDossier.rembourse, depot: 148, reponse: 140),
+    );
+    await _ordonnanceHistorique(
+      txn,
+      patientId: 1,
+      medecinId: 1,
+      joursAvant: 100,
+      lignes: const [
+        _Ligne('Mopral', ['matin'], 28),
+        _Ligne('Magné B6', ['matin', 'soir'], 25),
+      ],
+      dossier: const _DossierDemo(
+        StatutDossier.refuse,
+        depot: 98,
+        reponse: 90,
+        motif: 'Pièce justificative manquante',
+      ),
+    );
+    await _ordonnanceHistorique(
+      txn,
+      patientId: 2,
+      medecinId: 2,
+      joursAvant: 70,
+      lignes: const [
+        _Ligne('Glucophage', ['matin', 'soir'], 30, apci: true),
+        _Ligne('Tahor', ['soir'], 30),
+      ],
+      dossier: const _DossierDemo(StatutDossier.rembourse, depot: 68, reponse: 60),
+    );
+    await _ordonnanceHistorique(
+      txn,
+      patientId: 1,
+      medecinId: 1,
+      joursAvant: 45,
+      lignes: const [
+        _Ligne('Paracétamol Générique', ['matin', 'soir'], 5),
+        _Ligne('Zithromax', ['matin'], 5),
+      ],
+      // En cours depuis plus que le délai de la CNAM : relance.
+      dossier: const _DossierDemo(StatutDossier.enCours, depot: 40),
+    );
+    await _ordonnanceHistorique(
+      txn,
+      patientId: 2,
+      medecinId: 2,
+      joursAvant: 38,
+      lignes: const [
+        _Ligne('Metformine Générique', ['matin', 'soir'], 30, apci: true),
+        _Ligne('Atorvastatine Générique', ['soir'], 30),
+      ],
+      dossier: const _DossierDemo(StatutDossier.partiel, depot: 36, reponse: 22),
+    );
+  }
+
+  static Future<void> _ordonnanceHistorique(
+    Transaction txn, {
+    required int patientId,
+    required int medecinId,
+    required int joursAvant,
+    required List<_Ligne> lignes,
+    required _DossierDemo dossier,
+  }) async {
+    final DateTime aujourdhui = DatesSql.jour(DateTime.now());
+    final DateTime emission = aujourdhui.subtract(Duration(days: joursAvant));
+
+    final List<Medicament> meds = [];
+    for (final _Ligne l in lignes) {
+      final List<Map<String, Object?>> rows = await txn.query(
+        'medicament',
+        where: 'nom_commercial = ?',
+        whereArgs: [l.medicament],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        return;
+      }
+      meds.add(Medicament.fromMap(rows.first));
+    }
+
+    // Ordonnance : brouillon, lignes, signature, délivrance complète.
+    final Ordonnance brouillon = Ordonnance(
+      numero: await Numerotation.prochain(txn, table: 'ordonnance', prefixe: 'ORD', annee: emission.year),
+      patientId: patientId,
+      medecinId: medecinId,
+      dateEmission: emission,
+      dateExpiration: emission.add(const Duration(days: Ordonnance.validiteJoursParDefaut)),
+    );
+    final int id = await txn.insert('ordonnance', brouillon.toMap());
+    final List<LigneOrdonnance> inserees = [];
+    for (int i = 0; i < lignes.length; i++) {
+      final _Ligne l = lignes[i];
+      final Medicament m = meds[i];
+      final LigneOrdonnance ligne = LigneOrdonnance(
+        ordonnanceId: id,
+        medicamentId: m.id!,
+        dosePrise: l.dose,
+        prisesParJour: l.moments.length,
+        moments: l.moments,
+        dureeJours: l.dureeJours,
+        quantiteBoites: CalculBoites.calculer(
+          dosePrise: l.dose,
+          prisesParJour: l.moments.length,
+          dureeJours: l.dureeJours,
+          unitesParBoite: m.unitesParBoite,
+        ),
+        lienApci: l.apci,
+      );
+      inserees.add(ligne.copyWith(id: await txn.insert('ligne_ordonnance', ligne.toMap())));
+    }
+    await txn.update(
+      'ordonnance',
+      {
+        'statut': StatutOrdonnance.validee.valeur,
+        'hash_signature': AuthenticiteOrdonnance.signer(brouillon, inserees),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    for (final LigneOrdonnance l in inserees) {
+      await txn.update(
+        'ligne_ordonnance',
+        {'quantite_delivree': l.quantiteBoites},
+        where: 'id = ?',
+        whereArgs: [l.id],
+      );
+    }
+    await txn.update(
+      'ordonnance',
+      {'statut': StatutOrdonnance.delivree.valeur},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    // Dossier : calcul de prise en charge avec les contrats du patient.
+    final Map<String, Object?>? cnam = await _contrat(txn, patientId, cnam: true);
+    if (cnam == null) {
+      return;
+    }
+    final Map<String, Object?>? mutuelle = await _contrat(txn, patientId, cnam: false);
+    final bool enApci = ((cnam['apci'] as int?) ?? 0) == 1;
+
+    double montant = 0;
+    double partCnam = 0;
+    double partMutuelle = 0;
+    for (int i = 0; i < inserees.length; i++) {
+      final Medicament m = meds[i];
+      final DetailLigne d = CalculPriseEnCharge.calculerLigne(
+        libelle: m.libelle,
+        prixPublic: m.prixPublic,
+        prixReference: m.prixReference,
+        boites: inserees[i].quantiteBoites,
+        tauxCnam: await _taux(txn, cnam['assurance_id'] as int, m.categorie.valeur) ?? 0,
+        apci: inserees[i].lienApci && enApci,
+        tauxMutuelle: mutuelle == null
+            ? null
+            : await _taux(txn, mutuelle['assurance_id'] as int, m.categorie.valeur),
+      );
+      montant += d.montant;
+      partCnam += d.partCnam;
+      partMutuelle += d.partMutuelle;
+    }
+    if (dossier.statut == StatutDossier.partiel) {
+      partCnam = partCnam / 2;
+    }
+    montant = CalculPriseEnCharge.arrondi(montant);
+    partCnam = CalculPriseEnCharge.arrondi(partCnam);
+    partMutuelle = CalculPriseEnCharge.arrondi(partMutuelle);
+
+    final DateTime depot = aujourdhui.subtract(Duration(days: dossier.depot, hours: -10));
+    final int? jourReponse = dossier.reponse;
+    final DateTime? reponse =
+        jourReponse == null ? null : aujourdhui.subtract(Duration(days: jourReponse, hours: -15));
+    await txn.insert(
+      'dossier_remboursement',
+      DossierRemboursement(
+        numero: await Numerotation.prochain(
+          txn,
+          table: 'dossier_remboursement',
+          prefixe: 'REM',
+          annee: depot.year,
+        ),
+        ordonnanceId: id,
+        contratId: cnam['id'] as int,
+        contratComplementaireId: mutuelle?['id'] as int?,
+        montantTotal: montant,
+        partObligatoire: partCnam,
+        partComplementaire: partMutuelle,
+        resteACharge: CalculPriseEnCharge.arrondi(montant - partCnam - partMutuelle),
+        statut: dossier.statut,
+        dateDepot: depot,
+        dateReponse: reponse,
+        motifRefus: dossier.motif,
+        restePaye: dossier.statut == StatutDossier.rembourse,
+        referencePaiement: dossier.statut == StatutDossier.rembourse ? 'DEMO-HISTORIQUE' : null,
+      ).toMap(),
+    );
+  }
+
+  /// Contrat CNAM (ou complémentaire) du patient, sous forme de ligne brute.
+  static Future<Map<String, Object?>?> _contrat(Transaction txn, int patientId, {required bool cnam}) async {
+    final List<Map<String, Object?>> rows = await txn.rawQuery('''
+      SELECT c.* FROM contrat_assurance c
+      JOIN assurance a ON a.id = c.assurance_id
+      WHERE c.patient_id = ? AND a.type ${cnam ? '=' : '<>'} 'cnam'
+      ORDER BY c.id LIMIT 1
+    ''', [patientId]);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<double?> _taux(Transaction txn, int assuranceId, String categorie) async {
+    final List<Map<String, Object?>> rows = await txn.query(
+      'taux_couverture',
+      columns: ['taux'],
+      where: 'assurance_id = ? AND categorie IN (?, ?)',
+      whereArgs: [assuranceId, categorie, TauxCouverture.tous],
+      orderBy: "categorie = '${TauxCouverture.tous}'",
+      limit: 1,
+    );
+    return rows.isEmpty ? null : (rows.first['taux'] as num).toDouble();
+  }
+
   static Medicament _parNom(String nom) {
     for (final Medicament m in medicaments) {
       if (m.nomCommercial == nom) {
@@ -599,6 +843,16 @@ class PrescriptionsDemo {
     );
     return rows.isNotEmpty;
   }
+}
+
+/// Dossier de démo : statut, jours écoulés depuis le dépôt et la réponse.
+class _DossierDemo {
+  const _DossierDemo(this.statut, {required this.depot, this.reponse, this.motif});
+
+  final StatutDossier statut;
+  final int depot;
+  final int? reponse;
+  final String? motif;
 }
 
 /// Ligne d'ordonnance de démo (posologie en unités du médicament).

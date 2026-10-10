@@ -9,6 +9,7 @@ import '../../../data/ordonnance_repository.dart';
 import '../../../domain/models/ordonnance.dart';
 import '../../../domain/models/vues_ordonnance.dart';
 import '../../../domain/ordonnance_manager.dart';
+import '../../../domain/traitement_manager.dart';
 import '../../widgets/dialogues_ordonnance.dart';
 import '../../widgets/elements_ui.dart';
 import '../ordonnance_detail_screen.dart';
@@ -54,8 +55,10 @@ enum _Periode {
 class _OrdonnancesTabState extends State<OrdonnancesTab> {
   final OrdonnanceRepository _repo = OrdonnanceRepository();
   final OrdonnanceManager _manager = OrdonnanceManager();
+  final TraitementManager _traitement = TraitementManager();
 
   List<OrdonnanceResume> _liste = [];
+  List<AlerteObservance> _alertes = [];
   bool _chargement = true;
   String _texte = '';
   _Filtre _filtre = _Filtre.toutes;
@@ -66,6 +69,23 @@ class _OrdonnancesTabState extends State<OrdonnancesTab> {
   void initState() {
     super.initState();
     _charger();
+    _chargerAlertes();
+  }
+
+  /// Patients sous 80 % d'observance (notification du module au médecin).
+  Future<void> _chargerAlertes() async {
+    final List<AlerteObservance> res = await _traitement.alertesObservance(widget.medecinId);
+    if (mounted) {
+      setState(() => _alertes = res);
+    }
+  }
+
+  String _texteAlertes() {
+    final List<String> noms = [];
+    for (final AlerteObservance a in _alertes) {
+      noms.add('${a.patientNom} (${a.observance.round()} %)');
+    }
+    return noms.join(', ');
   }
 
   Future<void> _charger() async {
@@ -160,6 +180,29 @@ class _OrdonnancesTabState extends State<OrdonnancesTab> {
               nbFiltres: _periode == _Periode.tout ? 0 : 1,
             ),
           ),
+          if (_alertes.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.notifications_active_outlined, color: AppColors.warning),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Observance sous 80 % : ${_texteAlertes()}',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           SizedBox(
             height: 52,
             child: ListView(

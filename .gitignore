@@ -50,3 +50,6 @@ app.*.map.json
 # Clés EmailJS (ne jamais pousser)
 /emailjs.json
 /assets/config/emailjs.json
+
+# Clés Konnect (paiement, ne jamais pousser)
+/assets/config/konnect.json

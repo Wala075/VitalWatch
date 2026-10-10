@@ -14,20 +14,32 @@ import '../../domain/ordonnance_manager.dart';
 import '../../domain/posologie.dart';
 import '../../domain/prescriptions_exception.dart';
 import '../../domain/regles_ordonnance.dart';
+import '../../domain/remboursement_manager.dart';
+import '../widgets/detail_prise_en_charge.dart';
 import '../widgets/dialogues_ordonnance.dart';
 import '../widgets/elements_ui.dart';
+import 'dossier_detail_screen.dart';
 import 'ligne_form_screen.dart';
+import 'ordonnance_pdf_screen.dart';
 
 /// Fiche d'une ordonnance. Les actions dépendent du statut :
 /// brouillon (lignes, validité, validation) ; validée (annuler, corriger) ;
 /// délivrée ou expirée (renouveler).
 class OrdonnanceDetailScreen extends StatefulWidget {
-  const OrdonnanceDetailScreen({super.key, required this.ordonnanceId, this.lectureSeule = false});
+  const OrdonnanceDetailScreen({
+    super.key,
+    required this.ordonnanceId,
+    this.lectureSeule = false,
+    this.modePatient = false,
+  });
 
   final int ordonnanceId;
 
   /// true pour un profil qui consulte sans prescrire.
   final bool lectureSeule;
+
+  /// Espace du patient : QR code, simulation, renouvellement, dossier.
+  final bool modePatient;
 
   @override
   State<OrdonnanceDetailScreen> createState() => _OrdonnanceDetailScreenState();
@@ -36,6 +48,7 @@ class OrdonnanceDetailScreen extends StatefulWidget {
 class _OrdonnanceDetailScreenState extends State<OrdonnanceDetailScreen> {
   final OrdonnanceRepository _repo = OrdonnanceRepository();
   final OrdonnanceManager _manager = OrdonnanceManager();
+  final RemboursementManager _remboursement = RemboursementManager();
 
   OrdonnanceResume? _resume;
   List<LigneDetail> _lignes = [];
@@ -278,9 +291,88 @@ class _OrdonnanceDetailScreenState extends State<OrdonnanceDetailScreen> {
     Navigator.pushReplacement<void, void>(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => OrdonnanceDetailScreen(ordonnanceId: copieId),
+        builder: (_) => OrdonnanceDetailScreen(
+          ordonnanceId: copieId,
+          lectureSeule: widget.lectureSeule,
+          modePatient: widget.modePatient,
+        ),
       ),
     );
+  }
+
+  // ----- PDF, patient -----
+
+  void _ouvrirPdf(Ordonnance o) {
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(builder: (_) => OrdonnancePdfScreen(ordonnanceId: o.id!)),
+    );
+  }
+
+  void _simuler(Ordonnance o) {
+    afficherSimulation(
+      context,
+      titre: 'Combien je vais payer ?',
+      calcul: _remboursement.calculer(o, simulation: true),
+    );
+  }
+
+  Future<void> _creerDossier(Ordonnance o) async {
+    int? id;
+    await _executer(() async {
+      id = await _remboursement.creerDossier(o);
+    });
+    final int? dossierId = id;
+    if (dossierId == null || !mounted) {
+      return;
+    }
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(builder: (_) => DossierDetailScreen(dossierId: dossierId, admin: false)),
+    );
+  }
+
+  List<Widget> _actionsPatient(Ordonnance o) {
+    final List<Widget> res = [];
+    void ajouter(Widget w) {
+      res.add(w);
+      res.add(const SizedBox(height: 10));
+    }
+
+    if (o.statut.estActive) {
+      ajouter(PrimaryButton(
+        label: 'Montrer au pharmacien (QR code)',
+        icon: Icons.qr_code_2_rounded,
+        onPressed: () => _ouvrirPdf(o),
+      ));
+      ajouter(SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () => _simuler(o),
+          icon: const Icon(Icons.calculate_outlined),
+          label: const Text('Combien je vais payer ?'),
+        ),
+      ));
+    }
+    if (o.statut == StatutOrdonnance.delivree || o.statut == StatutOrdonnance.partiellementDelivree) {
+      ajouter(SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: _occupe ? null : () => _creerDossier(o),
+          icon: const Icon(Icons.receipt_long_outlined),
+          label: const Text('Créer le dossier de remboursement'),
+        ),
+      ));
+    }
+    if (OrdonnanceManager.estRenouvelable(o)) {
+      ajouter(PrimaryButton(
+        label: 'Renouveler (${o.nbRenouvellements} restant${o.nbRenouvellements > 1 ? 's' : ''})',
+        icon: Icons.autorenew_rounded,
+        loading: _occupe,
+        onPressed: () => _renouveler(o),
+      ));
+    }
+    return res;
   }
 
   // ----- Affichage -----
@@ -305,6 +397,12 @@ class _OrdonnanceDetailScreenState extends State<OrdonnanceDetailScreen> {
       appBar: AppBar(
         title: Text(o.numero),
         actions: [
+          if (!o.estModifiable)
+            IconButton(
+              icon: const Icon(Icons.qr_code_2_rounded),
+              tooltip: 'QR code et PDF',
+              onPressed: () => _ouvrirPdf(o),
+            ),
           if (modifiable)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: AppColors.danger),
@@ -387,6 +485,7 @@ class _OrdonnanceDetailScreenState extends State<OrdonnanceDetailScreen> {
               const SizedBox(height: 12),
             ],
             if (!widget.lectureSeule) ..._actions(o),
+            if (widget.modePatient) ..._actionsPatient(o),
             const SizedBox(height: 24),
           ],
         ),

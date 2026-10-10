@@ -6,6 +6,7 @@ import '../../../../../core/routing/app_routes.dart';
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../models/utilisateur.dart';
 import '../../../../../shared_providers/session.dart';
+import '../../../../prescriptions/presentation/widgets/carte_mon_traitement.dart';
 import '../../../data/demo_data.dart';
 import '../../../data/demo_store.dart';
 import '../../widgets/countdown_chip.dart';
@@ -125,6 +126,11 @@ class _HomeTabState extends State<HomeTab> {
               const SizedBox(height: 18),
               _prochainRdv(),
               const SizedBox(height: 24),
+              // Module 5 : traitement du patient (prochaine prise, observance).
+              if (u?.role == Role.patient) ...[
+                const CarteMonTraitement(),
+                const SizedBox(height: 24),
+              ],
               SectionHeader(
                 titre: 'Spécialités',
                 action: 'Voir tout',

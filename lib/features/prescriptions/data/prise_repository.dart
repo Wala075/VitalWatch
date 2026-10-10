@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../domain/dates_sql.dart';
 import '../domain/models/prise.dart';
+import '../domain/models/vues_traitement.dart';
 import 'prescriptions_schema.dart';
 
 class PriseRepository {
@@ -42,6 +43,72 @@ class PriseRepository {
       ORDER BY p.heure_prevue
     ''', [patientId, DatesSql.dateHeure(du), DatesSql.dateHeure(au)]);
     return _liste(rows);
+  }
+
+  /// Planning d'un patient entre deux instants, avec les médicaments.
+  /// Ordonnances validées ou délivrées seulement (pas les brouillons ni les annulées).
+  Future<List<PrisePlanifiee>> planning(int patientId, DateTime du, DateTime au) async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows = await db.rawQuery('''
+      SELECT p.*, l.dose_par_prise, l.instructions, o.numero,
+        m.nom_commercial, m.dosage, m.forme
+      FROM prise p
+      JOIN ligne_ordonnance l ON l.id = p.ligne_id
+      JOIN ordonnance o ON o.id = l.ordonnance_id
+      JOIN medicament m ON m.id = l.medicament_id
+      WHERE o.patient_id = ?
+        AND o.statut NOT IN ('brouillon', 'annulee')
+        AND p.heure_prevue BETWEEN ? AND ?
+      ORDER BY p.heure_prevue, m.nom_commercial
+    ''', [patientId, DatesSql.dateHeure(du), DatesSql.dateHeure(au)]);
+
+    final List<PrisePlanifiee> res = [];
+    for (final Map<String, Object?> r in rows) {
+      res.add(PrisePlanifiee(
+        prise: Prise.fromMap(r),
+        medicament: '${r['nom_commercial']} ${r['dosage']}',
+        forme: r['forme'] as String,
+        dose: (r['dose_par_prise'] as num).toDouble(),
+        numero: r['numero'] as String,
+        instructions: r['instructions'] as String?,
+      ));
+    }
+    return res;
+  }
+
+  /// Observance jour par jour sur [jours] jours (prises échues seulement).
+  Future<List<ObservanceJour>> observanceParJour(int patientId, {int jours = 7}) async {
+    final Database db = await _db;
+    final DateTime maintenant = DateTime.now();
+    final DateTime debut = DatesSql.jour(maintenant).subtract(Duration(days: jours - 1));
+    final List<Map<String, Object?>> rows = await db.rawQuery('''
+      SELECT date(p.heure_prevue) AS jour,
+        SUM(CASE WHEN p.statut = 'prise' THEN 1 ELSE 0 END) AS faites,
+        COUNT(*) AS echues
+      FROM prise p
+      JOIN ligne_ordonnance l ON l.id = p.ligne_id
+      JOIN ordonnance o ON o.id = l.ordonnance_id
+      WHERE o.patient_id = ?
+        AND o.statut NOT IN ('brouillon', 'annulee')
+        AND p.heure_prevue BETWEEN ? AND ?
+      GROUP BY date(p.heure_prevue)
+    ''', [patientId, DatesSql.dateHeure(debut), DatesSql.dateHeure(maintenant)]);
+
+    final Map<String, Map<String, Object?>> parJour = {};
+    for (final Map<String, Object?> r in rows) {
+      parJour[r['jour'] as String] = r;
+    }
+    final List<ObservanceJour> res = [];
+    for (int i = 0; i < jours; i++) {
+      final DateTime jour = debut.add(Duration(days: i));
+      final Map<String, Object?>? r = parJour[DatesSql.date(jour)];
+      res.add(ObservanceJour(
+        jour: jour,
+        faites: r == null ? 0 : (r['faites'] as int? ?? 0),
+        echues: r == null ? 0 : (r['echues'] as int? ?? 0),
+      ));
+    }
+    return res;
   }
 
   /// Cocher « prise » ou « oubliée ».
