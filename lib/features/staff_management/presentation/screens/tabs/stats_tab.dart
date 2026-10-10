@@ -61,7 +61,7 @@ class _StatsTabState extends State<StatsTab> {
     return RefreshIndicator(
       onRefresh: _charger,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 120),
         children: [
           GridView.count(
             crossAxisCount: 2,

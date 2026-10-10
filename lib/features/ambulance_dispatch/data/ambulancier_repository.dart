@@ -4,6 +4,7 @@ import '../domain/dispatch_models.dart';
 import '../domain/models/ambulancier.dart';
 import 'ambulance_schema.dart';
 
+/// Ambulanciers (table `ambulanciers`, partagée avec le module 1).
 class AmbulancierRepository {
   Future<Database> get _db => AmbulanceSchema.database;
 
@@ -62,18 +63,6 @@ class AmbulancierRepository {
     return rows.isEmpty ? null : Ambulancier.fromMap(rows.first);
   }
 
-  Future<bool> telephoneExiste(String telephone, {int? exclureId}) async {
-    final Database db = await _db;
-    final List<Map<String, Object?>> rows = await db.query(
-      'ambulanciers',
-      columns: ['id'],
-      where: 'telephone = ? AND id != ?',
-      whereArgs: [telephone, exclureId ?? -1],
-      limit: 1,
-    );
-    return rows.isNotEmpty;
-  }
-
   Future<int> compterAffectes(int ambulanceId, {bool disponiblesSeulement = false}) async {
     final Database db = await _db;
     final String filtre = disponiblesSeulement ? ' AND disponible = 1' : '';
@@ -84,18 +73,15 @@ class AmbulancierRepository {
         0;
   }
 
-  Future<int> inserer(Ambulancier a) async {
+  /// Seule écriture du module 3 dans la table partagée : l'affectation.
+  /// (Ajout, modification, suppression : module 1, Personnel.)
+  Future<void> affecter(int id, int? ambulanceId) async {
     final Database db = await _db;
-    return db.insert('ambulanciers', a.toMap());
-  }
-
-  Future<void> modifier(Ambulancier a) async {
-    final Database db = await _db;
-    await db.update('ambulanciers', a.toMap(), where: 'id = ?', whereArgs: [a.id]);
-  }
-
-  Future<void> supprimer(int id) async {
-    final Database db = await _db;
-    await db.delete('ambulanciers', where: 'id = ?', whereArgs: [id]);
+    await db.update(
+      'ambulanciers',
+      {'ambulance_id': ambulanceId},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 }

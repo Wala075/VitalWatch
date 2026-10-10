@@ -9,9 +9,12 @@ import '../../../domain/dispatch_models.dart';
 import '../../../domain/models/ambulancier.dart';
 import '../../providers/dispatch_controller.dart';
 import '../../widgets/dispatch_ui.dart';
-import '../ambulancier_form_screen.dart';
+import '../affectation_ambulancier_screen.dart';
 
 /// Ambulanciers et leur affectation aux ambulances.
+///
+/// Les ambulanciers sont ajoutés, modifiés et supprimés dans le module 1
+/// (Personnel, table partagée) : l'admin les affecte ici à une ambulance.
 class EquipagesTab extends StatefulWidget {
   const EquipagesTab({super.key, required this.gerer});
 
@@ -49,11 +52,11 @@ class _EquipagesTabState extends State<EquipagesTab> {
     });
   }
 
-  Future<void> _ouvrir([Ambulancier? a]) async {
+  Future<void> _affecter(Ambulancier a) async {
     final bool? modifie = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => AmbulancierFormScreen(ambulancier: a, peutSupprimer: widget.gerer),
+        builder: (_) => AffectationAmbulancierScreen(ambulancier: a),
       ),
     );
     if (modifie == true) {
@@ -65,16 +68,17 @@ class _EquipagesTabState extends State<EquipagesTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: widget.gerer
-          ? FloatingActionButton.extended(
-              heroTag: 'fab_equipages',
-              onPressed: () => _ouvrir(),
-              icon: const Icon(Icons.person_add_alt_1),
-              label: const Text('Ambulancier'),
-            )
-          : null,
       body: Column(
         children: [
+          if (widget.gerer)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Info(
+                icone: Icons.info_outline,
+                texte: 'Touchez un ambulancier pour l\'affecter à une ambulance. '
+                    'Ajout et modification : espace Personnel.',
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: SearchField(
@@ -134,7 +138,7 @@ class _EquipagesTabState extends State<EquipagesTab> {
                             final AmbulancierDetail d = _liste[i];
                             return _CarteAmbulancier(
                               detail: d,
-                              onTap: widget.gerer ? () => _ouvrir(d.ambulancier) : null,
+                              onTap: widget.gerer ? () => _affecter(d.ambulancier) : null,
                             );
                           },
                         ),

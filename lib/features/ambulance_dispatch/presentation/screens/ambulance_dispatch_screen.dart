@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/routing/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
+import '../../../../core/widgets/placeholder_view.dart';
 import '../../../../models/utilisateur.dart';
 import '../../../../shared_providers/session.dart';
 import '../../domain/ambulance_permissions.dart';
@@ -20,7 +23,8 @@ import 'tabs/stats_tab.dart';
 ///
 /// - Régulation (admin, médecin, infirmier) : carte temps réel,
 ///   interventions, flotte, équipages ; KPI + heatmap (admin, médecin).
-/// - Ambulancier : sa mission, la carte, ses interventions.
+/// - Ambulancier : sa mission, la carte, ses interventions (écran
+///   d'accueil de son compte, avec la déconnexion).
 /// - Patient : bouton SOS + suivi de l'ambulance ; sa montre (rythme
 ///   cardiaque) se connecte depuis son espace uniquement.
 /// - Suivi cardiaque (admin, médecin, infirmier) : mesures envoyées par les
@@ -49,6 +53,25 @@ class _AmbulanceDispatchScreenState extends State<AmbulanceDispatchScreen> {
     super.dispose();
   }
 
+  /// Écran racine (compte ambulancier) : pas de retour, donc déconnexion ici.
+  Future<void> _deconnexion() async {
+    final Utilisateur? u = Session.utilisateur;
+    final bool ok = await showConfirmDialog(
+      context,
+      titre: 'Déconnexion',
+      message: u == null
+          ? 'Quitter la session ?'
+          : '${u.nomComplet} (${u.role.libelle}) : quitter la session ?',
+      confirmer: 'Se déconnecter',
+      danger: true,
+    );
+    if (!ok || !mounted) {
+      return;
+    }
+    Session.fermer();
+    Navigator.pushNamedAndRemoveUntil(context, AppRoutes.login, (_) => false);
+  }
+
   /// Affiche les décisions automatiques (dispatch, blocage, arrivée...).
   void _afficherEvenements() {
     final List<String> evenements = _ctrl.prendreEvenements();
@@ -61,10 +84,18 @@ class _AmbulanceDispatchScreenState extends State<AmbulanceDispatchScreen> {
   @override
   Widget build(BuildContext context) {
     final Role role = Session.utilisateur?.role ?? Role.patient;
-    if (!role.accesRegulation) {
+    if (role == Role.patient) {
       // Patient : la montre et ses alertes tournent pour toute la session.
       return const HoteMontrePatient(child: SosScreen());
     }
+    if (!role.accesRegulation) {
+      return const PlaceholderView(
+        title: 'Ambulances & Interventions',
+        icon: Icons.lock_outline,
+        message: 'Accès réservé à la régulation',
+      );
+    }
+    final bool racine = !Navigator.canPop(context);
 
     final bool ambulancier = role == Role.ambulancier;
     final List<Tab> onglets = [];
@@ -114,6 +145,12 @@ class _AmbulanceDispatchScreenState extends State<AmbulanceDispatchScreen> {
                 ),
               ),
             _menuSimulation(),
+            if (racine)
+              IconButton(
+                tooltip: 'Déconnexion',
+                icon: const Icon(Icons.logout_rounded),
+                onPressed: _deconnexion,
+              ),
           ],
           bottom: TabBar(
             tabs: onglets,

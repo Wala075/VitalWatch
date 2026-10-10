@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/app_colors.dart';
 import '../../home_modules.dart';
-import '../../widgets/page_title.dart';
+import '../../../../../core/widgets/page_title.dart';
 
 /// Onglet réservé au personnel : accès aux 5 modules de gestion.
 class GestionTab extends StatelessWidget {

@@ -48,6 +48,8 @@ class AmbulanceSchema {
           kilometrage INTEGER NOT NULL DEFAULT 0
         )
       ''');
+      // Table partagée avec le module 1 : en général déjà créée par
+      // app_database.dart (sans clé étrangère sur ambulance_id).
       await txn.execute('''
         CREATE TABLE IF NOT EXISTS ambulanciers (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,7 +57,7 @@ class AmbulanceSchema {
           role TEXT NOT NULL,
           telephone TEXT NOT NULL,
           disponible INTEGER NOT NULL DEFAULT 1,
-          ambulance_id INTEGER REFERENCES ambulances(id) ON DELETE SET NULL
+          ambulance_id INTEGER
         )
       ''');
       await txn.execute('''
@@ -258,15 +260,29 @@ class AmbulanceSchema {
       [9, 'Karim Dridi', 'conducteur', '+21658901234', 1, 5],
       [10, 'Fatma Hamdi', 'secouriste', '+21629012345', 0, null],
     ];
+    // La table `ambulanciers` est partagée avec le module 1 (Personnel), qui
+    // crée déjà ces 10 ambulanciers (mêmes id) sans affectation : on ne les
+    // recrée pas, on les affecte seulement à leur ambulance.
     for (final List<Object?> e in equipages) {
-      b.insert('ambulanciers', {
-        'id': e[0],
-        'nom': e[1],
-        'role': e[2],
-        'telephone': e[3],
-        'disponible': e[4],
-        'ambulance_id': e[5],
-      });
+      b.insert(
+        'ambulanciers',
+        {
+          'id': e[0],
+          'nom': e[1],
+          'role': e[2],
+          'telephone': e[3],
+          'disponible': e[4],
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+      if (e[5] != null) {
+        b.update(
+          'ambulanciers',
+          {'ambulance_id': e[5]},
+          where: 'id = ? AND ambulance_id IS NULL',
+          whereArgs: [e[0]],
+        );
+      }
     }
 
     // Historique d'entretien : la n°5 approche de son seuil, la n°6 l'a

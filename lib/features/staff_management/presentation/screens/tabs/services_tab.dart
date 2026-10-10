@@ -3,14 +3,18 @@ import 'package:flutter/material.dart';
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../core/utils/formatters.dart';
 import '../../../../../core/widgets/empty_state.dart';
+import '../../../../../core/widgets/page_title.dart';
 import '../../../../../core/widgets/search_field.dart';
 import '../../../../../models/service.dart';
 import '../../../../../models/utilisateur.dart';
 import '../../../data/service_repository.dart';
 import '../../../domain/staff_models.dart';
+import '../../widgets/bouton_ajout.dart';
 import '../../widgets/info_chip.dart';
 import '../service_form_screen.dart';
+import 'stats_tab.dart';
 
+/// Services hospitaliers : liste (gestion par l'admin) et statistiques.
 class ServicesTab extends StatefulWidget {
   const ServicesTab({super.key, required this.role});
 
@@ -25,6 +29,7 @@ class _ServicesTabState extends State<ServicesTab> {
 
   List<ServiceStats> _services = [];
   bool _chargement = true;
+  bool _stats = false;
   String _texte = '';
   int _requete = 0;
 
@@ -37,9 +42,7 @@ class _ServicesTabState extends State<ServicesTab> {
   Future<void> _charger() async {
     final int requete = ++_requete;
     final List<ServiceStats> res = await _repo.statistiques(texte: _texte);
-    if (!mounted || requete != _requete) {
-      return;
-    }
+    if (!mounted || requete != _requete) return;
     setState(() {
       _services = res;
       _chargement = false;
@@ -56,62 +59,94 @@ class _ServicesTabState extends State<ServicesTab> {
         ),
       ),
     );
-    if (modifie == true) {
-      _charger();
-    }
+    if (modifie == true) _charger();
   }
 
   @override
   Widget build(BuildContext context) {
     final bool gerer = widget.role.gererServices;
+    final bool stats = _stats && widget.role.voirStats;
 
-    return Scaffold(
-      floatingActionButton: gerer
-          ? FloatingActionButton.extended(
-              heroTag: 'fab_services',
-              onPressed: () => _ouvrirFormulaire(),
-              icon: const Icon(Icons.add),
-              label: const Text('Service'),
-            )
-          : null,
-      body: Column(
+    return SafeArea(
+      bottom: false,
+      child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: SearchField(
-              hint: 'Rechercher un service',
-              onChanged: (String v) {
-                _texte = v;
-                _charger();
-              },
+          PageTitle(
+            surtitre: 'Organisation',
+            titre: 'Services',
+            trailing: gerer && !stats
+                ? BoutonAjout(
+                    tooltip: 'Ajouter un service',
+                    onPressed: () => _ouvrirFormulaire(),
+                  )
+                : null,
+          ),
+          if (widget.role.voirStats)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment<bool>(
+                      value: false,
+                      icon: Icon(Icons.list_rounded),
+                      label: Text('Liste'),
+                    ),
+                    ButtonSegment<bool>(
+                      value: true,
+                      icon: Icon(Icons.insights_rounded),
+                      label: Text('Statistiques'),
+                    ),
+                  ],
+                  selected: {_stats},
+                  onSelectionChanged: (Set<bool> s) =>
+                      setState(() => _stats = s.first),
+                ),
+              ),
             ),
-          ),
-          Expanded(
-            child: _chargement
-                ? const Center(child: CircularProgressIndicator())
-                : _services.isEmpty
-                    ? const EmptyState(
-                        icon: Icons.apartment,
-                        message: 'Aucun service',
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _charger,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-                          itemCount: _services.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 10),
-                          itemBuilder: (BuildContext context, int i) {
-                            final ServiceStats s = _services[i];
-                            return _ServiceCard(
-                              stats: s,
-                              onTap: gerer
-                                  ? () => _ouvrirFormulaire(s.service)
-                                  : null,
-                            );
-                          },
+          if (stats)
+            const Expanded(child: StatsTab())
+          else ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: SearchField(
+                hint: 'Rechercher un service',
+                onChanged: (String v) {
+                  _texte = v;
+                  _charger();
+                },
+              ),
+            ),
+            const SizedBox(height: 4),
+            Expanded(
+              child: _chargement
+                  ? const Center(child: CircularProgressIndicator())
+                  : _services.isEmpty
+                      ? const EmptyState(
+                          icon: Icons.apartment,
+                          message: 'Aucun service',
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _charger,
+                          child: ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+                            itemCount: _services.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: 10),
+                            itemBuilder: (BuildContext context, int i) {
+                              final ServiceStats s = _services[i];
+                              return _ServiceCard(
+                                stats: s,
+                                onTap: gerer
+                                    ? () => _ouvrirFormulaire(s.service)
+                                    : null,
+                              );
+                            },
+                          ),
                         ),
-                      ),
-          ),
+            ),
+          ],
         ],
       ),
     );
@@ -129,8 +164,9 @@ class _ServiceCard extends StatelessWidget {
     final Service s = stats.service;
     final double taux = stats.tauxOccupation.clamp(0.0, 1.0).toDouble();
 
-    return Card(
-      margin: EdgeInsets.zero,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,

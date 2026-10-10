@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../home/presentation/widgets/ecg_painter.dart';
+import '../../../../core/widgets/ecg_painter.dart';
 import '../../data/api/mibro_protocole.dart';
 import '../../data/api/montre_ble_service.dart';
 import '../../domain/surveillance_cardiaque.dart';

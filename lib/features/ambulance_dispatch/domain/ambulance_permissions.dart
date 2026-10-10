@@ -2,8 +2,9 @@ import '../../../models/utilisateur.dart';
 
 /// Droits du module Ambulances & Interventions selon le profil connecté.
 extension AmbulancePermissions on Role {
-  /// Régulation : carte, interventions, suivi.
-  bool get accesRegulation => this != Role.patient;
+  /// Régulation : carte, interventions, suivi. Le patient a son espace SOS ;
+  /// le pharmacien (module Ordonnances) n'y a pas accès.
+  bool get accesRegulation => this != Role.patient && this != Role.pharmacien;
 
   /// Ajouter / modifier / supprimer ambulances, équipages, maintenances.
   bool get gererFlotte => this == Role.admin;

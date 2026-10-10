@@ -118,9 +118,19 @@ class AmbulanceRepository {
     await e.update('ambulances', a.toMap(), where: 'id = ?', whereArgs: [a.id]);
   }
 
+  /// Supprime l'ambulance et désaffecte son équipage (la table partagée
+  /// `ambulanciers` n'a pas de clé étrangère vers `ambulances`).
   Future<void> supprimer(int id) async {
     final Database db = await _db;
-    await db.delete('ambulances', where: 'id = ?', whereArgs: [id]);
+    await db.transaction((Transaction txn) async {
+      await txn.update(
+        'ambulanciers',
+        {'ambulance_id': null},
+        where: 'ambulance_id = ?',
+        whereArgs: [id],
+      );
+      await txn.delete('ambulances', where: 'id = ?', whereArgs: [id]);
+    });
   }
 
   Future<void> changerStatut(

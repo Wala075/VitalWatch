@@ -5,7 +5,7 @@ import '../../../../../core/widgets/empty_state.dart';
 import '../../../data/demo_data.dart';
 import '../../../data/demo_store.dart';
 import '../../widgets/countdown_chip.dart';
-import '../../widgets/page_title.dart';
+import '../../../../../core/widgets/page_title.dart';
 import '../doctor_detail_screen.dart';
 
 class ScheduleTab extends StatefulWidget {

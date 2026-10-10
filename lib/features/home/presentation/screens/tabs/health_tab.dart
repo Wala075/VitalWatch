@@ -9,8 +9,8 @@ import '../../../../../shared_providers/session.dart';
 import '../../../../ambulance_dispatch/presentation/widgets/sante_montre.dart';
 import '../../../data/demo_data.dart';
 import '../../../data/demo_store.dart';
-import '../../widgets/ecg_painter.dart';
-import '../../widgets/page_title.dart';
+import '../../../../../core/widgets/ecg_painter.dart';
+import '../../../../../core/widgets/page_title.dart';
 
 class HealthTab extends StatefulWidget {
   const HealthTab({super.key});

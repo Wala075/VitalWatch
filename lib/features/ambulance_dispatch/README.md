@@ -7,14 +7,15 @@ Branche : `feature/ambulances`
 | Table | Champs |
 |---|---|
 | `ambulances` | id, immatriculation, type (A/B/C), statut, latitude, longitude, kilometrage |
-| `ambulanciers` | id, nom, role, telephone, disponible, ambulance_id (affectation d'équipage) |
+| `ambulanciers` | id, nom, role, telephone, disponible, ambulance_id — **table partagée avec le module 1** |
 | `interventions` | id, ambulance_id, patient_id, alerte_id, adresse, lat, lng, gravite, statut, origine, heure_appel, heure_depart, heure_arrivee, hopital_destination |
 | `maintenances` | id, ambulance_id, type, date, cout, prochain_entretien_km, statut |
 | `mesures_cardiaques` | id, patient_id, bpm, date, source, simulee (montre du patient) |
 | `seuils_cardiaques` | patient_id, min, max, modifie_le (fixés par le médecin) |
 
 Les tables sont créées avec `CREATE TABLE IF NOT EXISTS` au premier accès :
-`app_database.dart` (fichier commun) n'est pas modifié. Des données de démo
+`app_database.dart` (fichier commun) n'est pas modifié (sauf `ambulanciers`, créée par
+le module 1). Des données de démo
 (6 ambulances, 10 ambulanciers, 42 interventions sur 30 jours) sont insérées une fois,
 puis 7 bases nationales avec équipage (SAMU Tunis, Ariana El Ghazala, Lafayette,
 La Marsa, Ben Arous, Sfax, Nabeul), ajoutées aussi sur une base existante.
@@ -26,6 +27,21 @@ Espace patient : carte « Ambulances autour de vous » (sa position + ambulances
 direct, la plus proche et son temps estimé) — `presentation/widgets/ambulances_proches.dart`.
 
 Compte de démo : `ambulancier@vitalwatch.tn` / `ambulancier123`.
+
+### Partage avec le module 1 (Services & Personnel, Wala)
+
+- Le module 1 **ajoute, modifie, supprime** les ambulanciers (fiche, rôle, téléphone,
+  disponibilité, compte de connexion) : Personnel → Ambulanciers.
+- Le module 3 **affecte** seulement chaque ambulancier à une ambulance (`ambulance_id`) :
+  Ambulances → onglet *Équipages* (admin) → `AffectationAmbulancierScreen`.
+  Règles : 4 ambulanciers maximum par ambulance, équipage figé pendant une mission.
+- Les 10 ambulanciers de démo ont les mêmes id dans les deux modules : le module 3 ne les
+  recrée pas (`ConflictAlgorithm.ignore`), il les affecte à leur ambulance.
+- La table n'a pas de clé étrangère vers `ambulances` : supprimer une ambulance
+  désaffecte son équipage explicitement (`AmbulanceRepository.supprimer`).
+- Accès : admin / médecin / infirmier via la tuile *Ambulances* de l'espace Personnel ;
+  ambulancier : écran d'accueil de son compte (déconnexion dans la barre du haut) ;
+  patient : onglet *SOS* de son espace ; pharmacien : pas d'accès.
 
 ## APIs
 

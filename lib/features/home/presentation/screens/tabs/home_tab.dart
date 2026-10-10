@@ -11,8 +11,8 @@ import '../../../data/demo_data.dart';
 import '../../../data/demo_store.dart';
 import '../../widgets/countdown_chip.dart';
 import '../../widgets/doctor_avatar.dart';
-import '../../widgets/ecg_painter.dart';
-import '../../widgets/page_title.dart';
+import '../../../../../core/widgets/ecg_painter.dart';
+import '../../../../../core/widgets/page_title.dart';
 import '../doctor_detail_screen.dart';
 
 class HomeTab extends StatefulWidget {

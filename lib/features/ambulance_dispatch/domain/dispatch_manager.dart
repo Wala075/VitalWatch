@@ -1,7 +1,6 @@
 import 'package:latlong2/latlong.dart';
 import 'package:sqflite/sqflite.dart';
 
-import '../../../core/utils/validators.dart';
 import '../data/ambulance_repository.dart';
 import '../data/ambulance_schema.dart';
 import '../data/ambulancier_repository.dart';
@@ -164,7 +163,7 @@ class DispatchManager {
         'Ambulance en mission : suppression impossible avant la fin de la mission',
       );
     }
-    // Équipage désaffecté, historique conservé (ON DELETE SET NULL)
+    // Équipage désaffecté, historique des interventions conservé
     await _ambulances.supprimer(id);
   }
 
@@ -187,79 +186,39 @@ class DispatchManager {
 
   // =====================================================================
   // Ambulanciers (équipages)
+  // Le module 1 (Personnel) ajoute, modifie et supprime les ambulanciers
+  // (table partagée) ; ici on les affecte seulement aux ambulances.
   // =====================================================================
 
-  Future<int> enregistrerAmbulancier(Ambulancier a) async {
-    final String nom = a.nom.trim();
-    if (nom.length < 3) {
-      throw const DispatchException('Le nom doit contenir au moins 3 caractères');
-    }
-    final String? erreurTel = Validators.telephone(a.telephone);
-    if (erreurTel != null) {
-      throw DispatchException(erreurTel);
-    }
-    final String tel = Validators.normaliserTelephone(a.telephone);
-    if (await _equipiers.telephoneExiste(tel, exclureId: a.id)) {
-      throw const DispatchException('Ce numéro est déjà attribué à un ambulancier');
-    }
-
-    final int? id = a.id;
-    final Ambulancier? ancien = id == null ? null : await _equipiers.parId(id);
-    if (id != null && ancien == null) {
+  /// Affecte l'ambulancier [id] à l'ambulance [ambulanceId] (null : le
+  /// retire de son équipage). Équipage d'une ambulance en mission figé,
+  /// [maxEquipiers] au maximum par ambulance.
+  Future<void> affecterAmbulancier(int id, int? ambulanceId) async {
+    final Ambulancier? a = await _equipiers.parId(id);
+    if (a == null) {
       throw const DispatchException('Ambulancier introuvable');
     }
-
-    // On ne modifie pas l'équipage d'une ambulance en mission
-    if (ancien != null) {
-      final bool change =
-          ancien.ambulanceId != a.ambulanceId || (ancien.disponible && !a.disponible);
-      if (change && await _ambulanceEnMission(ancien.ambulanceId)) {
-        throw const DispatchException(
-          'Équipage en mission : modification possible après la fin de la mission',
-        );
-      }
+    if (a.ambulanceId == ambulanceId) {
+      return;
     }
-
-    final int? ambulanceId = a.ambulanceId;
+    if (await _ambulanceEnMission(a.ambulanceId) || await _ambulanceEnMission(ambulanceId)) {
+      throw const DispatchException(
+        'Équipage en mission : affectation possible après la fin de la mission',
+      );
+    }
     if (ambulanceId != null) {
-      final bool dejaAffecte = ancien != null && ancien.ambulanceId == ambulanceId;
+      if (await _ambulances.parId(ambulanceId) == null) {
+        throw const DispatchException('Ambulance introuvable');
+      }
       final int nb = await _equipiers.compterAffectes(ambulanceId);
-      if (!dejaAffecte && nb >= maxEquipiers) {
+      if (nb >= maxEquipiers) {
         throw const DispatchException(
           'Équipage complet : $maxEquipiers ambulanciers maximum par ambulance',
         );
       }
     }
-
-    final Ambulancier propre = Ambulancier(
-      id: id,
-      nom: nom,
-      role: a.role,
-      telephone: tel,
-      disponible: a.disponible,
-      ambulanceId: ambulanceId,
-    );
-    if (id == null) {
-      final int nouveau = await _equipiers.inserer(propre);
-      await traiterFileAttente();
-      return nouveau;
-    }
-    await _equipiers.modifier(propre);
+    await _equipiers.affecter(id, ambulanceId);
     await traiterFileAttente();
-    return id;
-  }
-
-  Future<void> supprimerAmbulancier(int id) async {
-    final Ambulancier? a = await _equipiers.parId(id);
-    if (a == null) {
-      return;
-    }
-    if (await _ambulanceEnMission(a.ambulanceId)) {
-      throw const DispatchException(
-        'Ambulancier en mission : suppression possible après la fin de la mission',
-      );
-    }
-    await _equipiers.supprimer(id);
   }
 
   Future<bool> _ambulanceEnMission(int? ambulanceId) async {
