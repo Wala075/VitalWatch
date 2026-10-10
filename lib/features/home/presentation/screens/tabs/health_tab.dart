@@ -4,10 +4,13 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/app_colors.dart';
+import '../../../../../models/utilisateur.dart';
+import '../../../../../shared_providers/session.dart';
+import '../../../../ambulance_dispatch/presentation/widgets/sante_montre.dart';
 import '../../../data/demo_data.dart';
 import '../../../data/demo_store.dart';
-import '../../widgets/ecg_painter.dart';
-import '../../widgets/page_title.dart';
+import '../../../../../core/widgets/ecg_painter.dart';
+import '../../../../../core/widgets/page_title.dart';
 
 class HealthTab extends StatefulWidget {
   const HealthTab({super.key});
@@ -26,6 +29,9 @@ class _HealthTabState extends State<HealthTab> with TickerProviderStateMixin {
 
   int _bpm = 72;
   bool _seance = false;
+
+  /// Patient : vraies données de sa montre (module 3) au lieu de la démo.
+  bool get _patient => Session.utilisateur?.role == Role.patient;
   int _jourChoisi = DateTime.now().weekday - 1;
 
   @override
@@ -37,11 +43,13 @@ class _HealthTabState extends State<HealthTab> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(seconds: 8), // 4 s inspiration + 4 s expiration
     );
-    _timerBpm = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (mounted) {
-        setState(() => _bpm = 68 + _random.nextInt(10));
-      }
-    });
+    if (!_patient) {
+      _timerBpm = Timer.periodic(const Duration(seconds: 2), (_) {
+        if (mounted) {
+          setState(() => _bpm = 68 + _random.nextInt(10));
+        }
+      });
+    }
   }
 
   @override
@@ -74,7 +82,12 @@ class _HealthTabState extends State<HealthTab> with TickerProviderStateMixin {
             titre: 'Santé',
             padding: EdgeInsets.fromLTRB(0, 12, 0, 14),
           ),
-          _carteCoeur(),
+          if (_patient) ...[
+            const CarteCoeurMontre(),
+            const SizedBox(height: 14),
+            const CarteDonneesMontre(),
+          ] else
+            _carteCoeur(),
           const SizedBox(height: 14),
           ListenableBuilder(
             listenable: _store,
@@ -83,7 +96,7 @@ class _HealthTabState extends State<HealthTab> with TickerProviderStateMixin {
           const SizedBox(height: 14),
           _carteRespiration(),
           const SizedBox(height: 14),
-          _carteSemaine(),
+          if (_patient) const CartePasDuJour() else _carteSemaine(),
         ],
       ),
     );

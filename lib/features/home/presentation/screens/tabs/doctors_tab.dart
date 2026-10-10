@@ -5,7 +5,7 @@ import '../../../../../core/widgets/empty_state.dart';
 import '../../../data/demo_data.dart';
 import '../../../data/demo_store.dart';
 import '../../widgets/doctor_avatar.dart';
-import '../../widgets/page_title.dart';
+import '../../../../../core/widgets/page_title.dart';
 import '../doctor_detail_screen.dart';
 
 class DoctorsTab extends StatefulWidget {

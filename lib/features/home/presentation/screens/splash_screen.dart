@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared_providers/session.dart';
-import '../widgets/ecg_painter.dart';
+import '../../../../core/widgets/ecg_painter.dart';
 
 /// Écran de démarrage : tracé ECG, logo cœur avec ondes, titre, barre.
 class SplashScreen extends StatefulWidget {

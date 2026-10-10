@@ -1,57 +1,67 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/app_background.dart';
+import '../../../../core/widgets/floating_nav_bar.dart';
 import '../../../../core/widgets/placeholder_view.dart';
 import '../../../../models/utilisateur.dart';
 import '../../../../shared_providers/session.dart';
-import 'tabs/medecins_tab.dart';
+import 'tabs/accueil_tab.dart';
+import 'tabs/personnel_tab.dart';
 import 'tabs/patients_tab.dart';
 import 'tabs/services_tab.dart';
-import 'tabs/stats_tab.dart';
 
-/// MODULE 1 — Services & Personnel.
-class StaffManagementScreen extends StatelessWidget {
+/// MODULE 1 — Espace du personnel (admin, médecins, infirmiers).
+/// L'admin a accès à tout ; médecins et infirmiers ont des droits limités
+/// (voir RolePermissions dans models/utilisateur.dart).
+class StaffManagementScreen extends StatefulWidget {
   const StaffManagementScreen({super.key});
+
+  @override
+  State<StaffManagementScreen> createState() => _StaffManagementScreenState();
+}
+
+class _StaffManagementScreenState extends State<StaffManagementScreen> {
+  int _onglet = 0;
+
+  void _aller(int index) => setState(() => _onglet = index);
 
   @override
   Widget build(BuildContext context) {
     final Role? role = Session.utilisateur?.role;
     if (role == null || !role.accesPersonnel) {
       return const PlaceholderView(
-        title: 'Services & Personnel',
+        title: 'Espace personnel',
         icon: Icons.lock_outline,
         message: 'Accès réservé au personnel',
       );
     }
 
-    final List<Tab> onglets = [
-      const Tab(icon: Icon(Icons.apartment), text: 'Services'),
-      const Tab(icon: Icon(Icons.medical_services_outlined), text: 'Médecins'),
-      const Tab(icon: Icon(Icons.people_outline), text: 'Patients'),
-      if (role.voirStats)
-        const Tab(icon: Icon(Icons.insights), text: 'Stats'),
-    ];
-    final List<Widget> vues = [
-      ServicesTab(role: role),
-      MedecinsTab(role: role),
-      PatientsTab(role: role),
-      if (role.voirStats) const StatsTab(),
-    ];
+    // Seul l'onglet affiché est construit : ses données sont rechargées
+    // à chaque fois qu'on y revient.
+    final Widget page = switch (_onglet) {
+      1 => PersonnelTab(key: const ValueKey<int>(1), role: role),
+      2 => PatientsTab(key: const ValueKey<int>(2), role: role),
+      3 => ServicesTab(key: const ValueKey<int>(3), role: role),
+      _ => AccueilTab(key: const ValueKey<int>(0), role: role, onAller: _aller),
+    };
 
-    return DefaultTabController(
-      length: onglets.length,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Services & Personnel'),
-          bottom: TabBar(
-            tabs: onglets,
-            labelColor: AppColors.primary,
-            unselectedLabelColor: AppColors.textSecondary,
-            indicatorColor: AppColors.primary,
-            indicatorSize: TabBarIndicatorSize.tab,
-          ),
+    return Scaffold(
+      extendBody: true,
+      body: AppBackground(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: page,
         ),
-        body: TabBarView(children: vues),
+      ),
+      bottomNavigationBar: FloatingNavBar(
+        items: const [
+          NavItem(Icons.dashboard_rounded, 'Accueil'),
+          NavItem(Icons.badge_rounded, 'Personnel'),
+          NavItem(Icons.people_alt_rounded, 'Patients'),
+          NavItem(Icons.apartment_rounded, 'Services'),
+        ],
+        index: _onglet,
+        onTap: _aller,
       ),
     );
   }

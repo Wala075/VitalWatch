@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/theme/app_colors.dart';
+import '../theme/app_colors.dart';
 
 /// Fond dégradé menthe → crème de l'espace santé.
 class AppBackground extends StatelessWidget {

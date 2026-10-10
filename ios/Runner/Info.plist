@@ -24,6 +24,12 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>VitalWatch utilise votre position pour envoyer une ambulance (SOS) et suivre les interventions.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>VitalWatch écoute « help » ou « au secours » pour envoyer une ambulance.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>VitalWatch reconnaît les appels à l'aide prononcés pour envoyer une ambulance.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

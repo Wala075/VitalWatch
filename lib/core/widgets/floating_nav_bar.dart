@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/theme/app_colors.dart';
+import '../theme/app_colors.dart';
 
 class NavItem {
   const NavItem(this.icon, this.label, {this.badge = 0});

@@ -1,4 +1,4 @@
-enum Role { admin, medecin, infirmier, ambulancier, patient }
+enum Role { admin, medecin, infirmier, ambulancier, patient, pharmacien }
 
 /// Compte de connexion. [refId] pointe vers le médecin ou le patient lié.
 class Utilisateur {
@@ -67,6 +67,8 @@ extension RoleLibelle on Role {
         return 'Ambulancier';
       case Role.patient:
         return 'Patient';
+      case Role.pharmacien:
+        return 'Pharmacien';
     }
   }
 }
@@ -80,6 +82,10 @@ extension RolePermissions on Role {
   bool get gererServices => this == Role.admin;
 
   bool get gererMedecins => this == Role.admin;
+
+  /// Ajouter / modifier / supprimer infirmiers, ambulanciers et pharmaciens
+  /// (+ comptes).
+  bool get gererPersonnel => this == Role.admin;
 
   bool get gererPatients =>
       this == Role.admin || this == Role.medecin || this == Role.infirmier;

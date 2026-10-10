@@ -42,6 +42,20 @@ dependencies:
   # Envoi des identifiants par mail (API REST EmailJS)
   http: ^1.6.0
 
+  # Module 3 : Ambulances & Interventions
+  # Carte OpenStreetMap, coordonnées GPS, position de l'appareil
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+  geolocator: ^14.1.1
+  # Rythme cardiaque de la montre via Health Connect (Android)
+  health: ^13.3.2
+  # Rythme cardiaque lu directement sur la montre Mibro C2 (Bluetooth LE)
+  flutter_blue_plus: ^2.3.14
+  # Alerte vocale : « help » / « au secours » (reconnaissance vocale du téléphone)
+  speech_to_text: ^7.5.0
+  # « help » entendu même écran verrouillé (service de premier plan Android)
+  flutter_foreground_task: ^11.0.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

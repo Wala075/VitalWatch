@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/theme/app_colors.dart';
+import '../theme/app_colors.dart';
 
 /// Titre de page sur deux lignes : « Trouvez votre » / « Médecin ».
 class PageTitle extends StatelessWidget {
