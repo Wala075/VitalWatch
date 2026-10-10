@@ -3,14 +3,21 @@ import 'package:sqflite/sqflite.dart';
 import '../../../core/services/app_database.dart';
 import '../../../core/services/email_service.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/validators.dart';
+import '../../../models/ambulancier.dart';
+import '../../../models/infirmier.dart';
 import '../../../models/medecin.dart';
 import '../../../models/patient.dart';
+import '../../../models/pharmacien.dart';
 import '../../../models/service.dart';
 import '../../../models/utilisateur.dart';
+import '../data/ambulancier_repository.dart';
 import '../data/compte_repository.dart';
 import '../data/horaire_repository.dart';
+import '../data/infirmier_repository.dart';
 import '../data/medecin_repository.dart';
 import '../data/patient_repository.dart';
+import '../data/pharmacien_repository.dart';
 import '../data/service_repository.dart';
 import 'disponibilite.dart';
 import 'staff_models.dart';
@@ -35,6 +42,9 @@ class StaffManager {
   final CompteRepository _comptes;
   final EmailService _email;
   final HoraireRepository _horaires = HoraireRepository();
+  final InfirmierRepository _infirmiers = InfirmierRepository();
+  final AmbulancierRepository _ambulanciers = AmbulancierRepository();
+  final PharmacienRepository _pharmaciens = PharmacienRepository();
 
   Future<Database> get _db => AppDatabase.instance.database;
 
@@ -324,6 +334,210 @@ class StaffManager {
       );
     });
     return _envoyerIdentifiants(res);
+  }
+
+  // =====================================================================
+  // Infirmiers
+  // =====================================================================
+
+  /// Ajout : crée aussi le compte et envoie les identifiants par mail.
+  /// Modification : met à jour le compte (ou le crée s'il manquait).
+  Future<ResultatEnregistrement> enregistrerInfirmier(Infirmier i) async {
+    final int? id = i.id;
+    if (await _infirmiers.matriculeExiste(i.matricule, exclureId: id)) {
+      throw StaffException('Le matricule ${i.matricule} est déjà utilisé');
+    }
+    if (await _infirmiers.emailExiste(i.email, exclureId: id) ||
+        await _comptes.emailExiste(i.email, role: Role.infirmier, refId: id)) {
+      throw StaffException("L'email ${i.email} est déjà utilisé");
+    }
+
+    final Database db = await _db;
+    final ResultatEnregistrement res =
+        await db.transaction((Transaction txn) async {
+      final int infirmierId;
+      if (id == null) {
+        infirmierId = await _infirmiers.inserer(i, exec: txn);
+      } else {
+        infirmierId = id;
+        await _infirmiers.modifier(i, exec: txn);
+      }
+      final CompteCree? compte = await _compteDuPersonnel(
+        role: Role.infirmier,
+        refId: infirmierId,
+        email: i.email,
+        nom: i.nom,
+        prenom: i.prenom,
+        exec: txn,
+      );
+      return ResultatEnregistrement(id: infirmierId, compte: compte);
+    });
+    return _envoyerIdentifiants(res);
+  }
+
+  Future<void> supprimerInfirmier(int id) async {
+    final Database db = await _db;
+    await db.transaction((Transaction txn) async {
+      await _comptes.supprimer(role: Role.infirmier, refId: id, exec: txn);
+      await _infirmiers.supprimer(id, exec: txn);
+    });
+  }
+
+  // =====================================================================
+  // Ambulanciers (table partagée avec le module 3, qui fait l'affectation)
+  // =====================================================================
+
+  /// Contrôles : nom (3 caractères min.), téléphone valide et unique,
+  /// email unique. Crée ou met à jour le compte de connexion.
+  Future<ResultatEnregistrement> enregistrerAmbulancier(
+    Ambulancier a,
+    String email,
+  ) async {
+    final String nom = a.nom.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (nom.length < 3) {
+      throw const StaffException('Le nom doit contenir au moins 3 caractères');
+    }
+    final String? erreurTel = Validators.telephone(a.telephone);
+    if (erreurTel != null) {
+      throw StaffException(erreurTel);
+    }
+    final String tel = Validators.normaliserTelephone(a.telephone);
+    final int? id = a.id;
+    if (await _ambulanciers.telephoneExiste(tel, exclureId: id)) {
+      throw const StaffException('Ce numéro est déjà attribué à un ambulancier');
+    }
+    final String mail = email.trim().toLowerCase();
+    if (await _comptes.emailExiste(mail, role: Role.ambulancier, refId: id)) {
+      throw StaffException("L'email $mail est déjà utilisé");
+    }
+
+    final Ambulancier propre = Ambulancier(
+      id: id,
+      nom: nom,
+      role: a.role,
+      telephone: tel,
+      disponible: a.disponible,
+      ambulanceId: a.ambulanceId,
+    );
+    final ({String prenom, String nom}) pn = propre.prenomNom;
+
+    final Database db = await _db;
+    final ResultatEnregistrement res =
+        await db.transaction((Transaction txn) async {
+      final int ambulancierId;
+      if (id == null) {
+        ambulancierId = await _ambulanciers.inserer(propre, exec: txn);
+      } else {
+        ambulancierId = id;
+        await _ambulanciers.modifier(propre, exec: txn);
+      }
+      final CompteCree? compte = await _compteDuPersonnel(
+        role: Role.ambulancier,
+        refId: ambulancierId,
+        email: mail,
+        nom: pn.nom,
+        prenom: pn.prenom,
+        exec: txn,
+      );
+      return ResultatEnregistrement(id: ambulancierId, compte: compte);
+    });
+    return _envoyerIdentifiants(res);
+  }
+
+  /// Refusé si l'ambulancier fait partie d'un équipage : il faut d'abord
+  /// le retirer de son ambulance (module Ambulances).
+  Future<void> supprimerAmbulancier(int id) async {
+    final AmbulancierCompte? fiche = await _ambulanciers.parId(id);
+    if (fiche == null) return;
+    if (fiche.ambulancier.ambulanceId != null) {
+      throw const StaffException(
+        "Cet ambulancier fait partie d'un équipage : retirez-le d'abord de "
+        'son ambulance (module Ambulances)',
+      );
+    }
+    final Database db = await _db;
+    await db.transaction((Transaction txn) async {
+      await _comptes.supprimer(role: Role.ambulancier, refId: id, exec: txn);
+      await _ambulanciers.supprimer(id, exec: txn);
+    });
+  }
+
+  // =====================================================================
+  // Pharmaciens (la délivrance des ordonnances est dans le module 5)
+  // =====================================================================
+
+  /// Ajout : crée aussi le compte et envoie les identifiants par mail.
+  /// Modification : met à jour le compte (ou le crée s'il manquait).
+  Future<ResultatEnregistrement> enregistrerPharmacien(Pharmacien p) async {
+    final int? id = p.id;
+    if (await _pharmaciens.matriculeExiste(p.matricule, exclureId: id)) {
+      throw StaffException('Le matricule ${p.matricule} est déjà utilisé');
+    }
+    if (await _pharmaciens.emailExiste(p.email, exclureId: id) ||
+        await _comptes.emailExiste(p.email, role: Role.pharmacien, refId: id)) {
+      throw StaffException("L'email ${p.email} est déjà utilisé");
+    }
+
+    final Database db = await _db;
+    final ResultatEnregistrement res =
+        await db.transaction((Transaction txn) async {
+      final int pharmacienId;
+      if (id == null) {
+        pharmacienId = await _pharmaciens.inserer(p, exec: txn);
+      } else {
+        pharmacienId = id;
+        await _pharmaciens.modifier(p, exec: txn);
+      }
+      final CompteCree? compte = await _compteDuPersonnel(
+        role: Role.pharmacien,
+        refId: pharmacienId,
+        email: p.email,
+        nom: p.nom,
+        prenom: p.prenom,
+        exec: txn,
+      );
+      return ResultatEnregistrement(id: pharmacienId, compte: compte);
+    });
+    return _envoyerIdentifiants(res);
+  }
+
+  Future<void> supprimerPharmacien(int id) async {
+    final Database db = await _db;
+    await db.transaction((Transaction txn) async {
+      await _comptes.supprimer(role: Role.pharmacien, refId: id, exec: txn);
+      await _pharmaciens.supprimer(id, exec: txn);
+    });
+  }
+
+  /// Crée le compte s'il n'existe pas encore (renvoyé pour l'envoi du mail),
+  /// sinon met à jour son email et son nom (renvoie null).
+  Future<CompteCree?> _compteDuPersonnel({
+    required Role role,
+    required int refId,
+    required String email,
+    required String nom,
+    required String prenom,
+    required DatabaseExecutor exec,
+  }) async {
+    if (await _comptes.existe(role: role, refId: refId, exec: exec)) {
+      await _comptes.mettreAJour(
+        role: role,
+        refId: refId,
+        email: email,
+        nom: nom,
+        prenom: prenom,
+        exec: exec,
+      );
+      return null;
+    }
+    return _comptes.creer(
+      email: email,
+      role: role,
+      refId: refId,
+      nom: nom,
+      prenom: prenom,
+      exec: exec,
+    );
   }
 
   /// Envoi automatique des identifiants par mail (après enregistrement en base).

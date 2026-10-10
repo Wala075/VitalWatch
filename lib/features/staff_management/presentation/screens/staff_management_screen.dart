@@ -6,7 +6,7 @@ import '../../../../core/widgets/placeholder_view.dart';
 import '../../../../models/utilisateur.dart';
 import '../../../../shared_providers/session.dart';
 import 'tabs/accueil_tab.dart';
-import 'tabs/medecins_tab.dart';
+import 'tabs/personnel_tab.dart';
 import 'tabs/patients_tab.dart';
 import 'tabs/services_tab.dart';
 
@@ -39,7 +39,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     // Seul l'onglet affiché est construit : ses données sont rechargées
     // à chaque fois qu'on y revient.
     final Widget page = switch (_onglet) {
-      1 => MedecinsTab(key: const ValueKey<int>(1), role: role),
+      1 => PersonnelTab(key: const ValueKey<int>(1), role: role),
       2 => PatientsTab(key: const ValueKey<int>(2), role: role),
       3 => ServicesTab(key: const ValueKey<int>(3), role: role),
       _ => AccueilTab(key: const ValueKey<int>(0), role: role, onAller: _aller),
@@ -56,7 +56,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       bottomNavigationBar: FloatingNavBar(
         items: const [
           NavItem(Icons.dashboard_rounded, 'Accueil'),
-          NavItem(Icons.medical_services_rounded, 'Médecins'),
+          NavItem(Icons.badge_rounded, 'Personnel'),
           NavItem(Icons.people_alt_rounded, 'Patients'),
           NavItem(Icons.apartment_rounded, 'Services'),
         ],

@@ -24,11 +24,18 @@ class AppRouter {
         break;
       case AppRoutes.home:
         // Admin, médecins et infirmiers : espace personnel (module 1).
-        // Patients (et autres rôles) : accueil patient.
+        // Ambulanciers : module Ambulances (3). Pharmaciens : module
+        // Ordonnances (5). Patients : accueil patient.
         final Role? role = Session.utilisateur?.role;
-        page = role != null && role.accesPersonnel
-            ? const StaffManagementScreen()
-            : const HomeScreen();
+        if (role == Role.ambulancier) {
+          page = const AmbulanceDispatchScreen();
+        } else if (role == Role.pharmacien) {
+          page = const PrescriptionsScreen();
+        } else if (role != null && role.accesPersonnel) {
+          page = const StaffManagementScreen();
+        } else {
+          page = const HomeScreen();
+        }
         break;
       case AppRoutes.login:
         page = const LoginScreen();

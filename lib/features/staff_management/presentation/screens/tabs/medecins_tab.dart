@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../core/widgets/app_dropdown_field.dart';
 import '../../../../../core/widgets/empty_state.dart';
-import '../../../../../core/widgets/page_title.dart';
 import '../../../../../core/widgets/search_field.dart';
 import '../../../../../models/medecin.dart';
 import '../../../../../models/service.dart';
@@ -18,17 +17,16 @@ import '../../widgets/badges_sante.dart';
 import '../../widgets/bouton_ajout.dart';
 import '../../widgets/info_chip.dart';
 import '../medecin_detail_screen.dart';
-import '../medecin_form_screen.dart';
 
-/// Liste des médecins avec leur disponibilité en temps réel.
-/// Toucher un médecin ouvre sa fiche (horaires, charge, patients).
-class MedecinsTab extends StatefulWidget {
-  const MedecinsTab({super.key, required this.role});
+/// Liste des médecins (onglet Personnel) avec leur disponibilité en temps
+/// réel. Toucher un médecin ouvre sa fiche (horaires, charge, patients).
+class MedecinsListe extends StatefulWidget {
+  const MedecinsListe({super.key, required this.role});
 
   final Role role;
 
   @override
-  State<MedecinsTab> createState() => _MedecinsTabState();
+  State<MedecinsListe> createState() => _MedecinsListeState();
 }
 
 class _Ligne {
@@ -39,7 +37,7 @@ class _Ligne {
   final Disponibilite disponibilite;
 }
 
-class _MedecinsTabState extends State<MedecinsTab> {
+class _MedecinsListeState extends State<MedecinsListe> {
   final MedecinRepository _repo = MedecinRepository();
   final HoraireRepository _horaireRepo = HoraireRepository();
   final ServiceRepository _serviceRepo = ServiceRepository();
@@ -85,14 +83,6 @@ class _MedecinsTabState extends State<MedecinsTab> {
     _charger();
   }
 
-  Future<void> _ajouter() async {
-    final bool? modifie = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(builder: (_) => const MedecinFormScreen()),
-    );
-    if (modifie == true) _charger();
-  }
-
   Future<void> _ouvrir(Medecin m) async {
     final int? id = m.id;
     if (id == null) return;
@@ -127,17 +117,8 @@ class _MedecinsTabState extends State<MedecinsTab> {
         ? lignes
         : lignes.where((l) => l.disponibilite.etat == _etat).toList();
 
-    return SafeArea(
-      bottom: false,
-      child: Column(
+    return Column(
         children: [
-          PageTitle(
-            surtitre: 'Équipe médicale',
-            titre: 'Médecins',
-            trailing: widget.role.gererMedecins
-                ? BoutonAjout(tooltip: 'Ajouter un médecin', onPressed: _ajouter)
-                : null,
-          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: SearchField(
@@ -217,7 +198,6 @@ class _MedecinsTabState extends State<MedecinsTab> {
                       ),
           ),
         ],
-      ),
     );
   }
 }

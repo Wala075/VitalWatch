@@ -1,6 +1,9 @@
 import '../../../core/services/email_service.dart';
+import '../../../models/ambulancier.dart';
+import '../../../models/infirmier.dart';
 import '../../../models/medecin.dart';
 import '../../../models/patient.dart';
+import '../../../models/pharmacien.dart';
 import '../../../models/service.dart';
 
 /// Erreur métier affichable à l'utilisateur.
@@ -87,6 +90,33 @@ class MedecinDetail {
   final Medecin medecin;
   final String? serviceNom;
   final int nbPatients;
+}
+
+class InfirmierDetail {
+  const InfirmierDetail({
+    required this.infirmier,
+    this.serviceNom,
+    required this.aCompte,
+  });
+
+  final Infirmier infirmier;
+  final String? serviceNom;
+  final bool aCompte;
+}
+
+/// Ambulancier + email de son compte de connexion (null : pas de compte).
+class AmbulancierCompte {
+  const AmbulancierCompte({required this.ambulancier, this.email});
+
+  final Ambulancier ambulancier;
+  final String? email;
+}
+
+class PharmacienDetail {
+  const PharmacienDetail({required this.pharmacien, required this.aCompte});
+
+  final Pharmacien pharmacien;
+  final bool aCompte;
 }
 
 class PatientDetail {
