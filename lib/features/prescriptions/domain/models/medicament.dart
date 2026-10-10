@@ -51,6 +51,10 @@ class Medicament {
   /// false = archivé (déjà prescrit, ne peut plus être supprimé).
   final bool actif;
 
+  /// Boîtes en stock à la pharmacie. Absent de [toMap] : il ne change que
+  /// par une entrée de stock ou une délivrance (MedicamentRepository).
+  final int stock;
+
   const Medicament({
     this.id,
     required this.nomCommercial,
@@ -67,6 +71,7 @@ class Medicament {
     required this.categorie,
     this.generique = false,
     this.actif = true,
+    this.stock = 0,
   });
 
   /// Doliprane 1000 mg
@@ -101,6 +106,7 @@ class Medicament {
       categorie: categorie,
       generique: generique,
       actif: actif ?? this.actif,
+      stock: stock,
     );
   }
 
@@ -121,6 +127,7 @@ class Medicament {
       categorie: CategorieMedicament.depuis(map['categorie']),
       generique: ((map['generique'] as int?) ?? 0) == 1,
       actif: ((map['actif'] as int?) ?? 1) == 1,
+      stock: (map['stock'] as int?) ?? 0,
     );
   }
 

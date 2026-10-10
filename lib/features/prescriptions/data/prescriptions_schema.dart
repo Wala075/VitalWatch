@@ -61,6 +61,7 @@ class PrescriptionsSchema {
       for (final String sql in tables) {
         await txn.execute(sql);
       }
+      await _ajouterColonneStock(txn);
       for (final String sql in index) {
         await txn.execute(sql);
       }
@@ -92,8 +93,31 @@ class PrescriptionsSchema {
         );
       }
 
+      // Stock de démo et médicaments couverts par les APCI : une seule fois.
+      if (await _lireMeta(txn, 'demo_stock_apci') == null) {
+        await PrescriptionsDemo.stockEtApci(txn);
+        await txn.insert(
+          'prescriptions_meta',
+          {'cle': 'demo_stock_apci', 'valeur': DatesSql.date(DateTime.now())},
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+
       await txn.rawUpdate(sqlExpiration, [DatesSql.date(DateTime.now())]);
     });
+  }
+
+  /// Base créée avant l'ajout du stock : la colonne est ajoutée une fois.
+  static Future<void> _ajouterColonneStock(Transaction txn) async {
+    final List<Map<String, Object?>> colonnes = await txn.rawQuery('PRAGMA table_info(medicament)');
+    for (final Map<String, Object?> c in colonnes) {
+      if (c['name'] == 'stock') {
+        return;
+      }
+    }
+    await txn.execute(
+      'ALTER TABLE medicament ADD COLUMN stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0)',
+    );
   }
 
   static Future<String?> _lireMeta(Transaction txn, String cle) async {
@@ -147,7 +171,8 @@ class PrescriptionsSchema {
       categorie        TEXT NOT NULL
                        CHECK (categorie IN ('vital', 'essentiel', 'intermediaire', 'non_remboursable')),
       generique        INTEGER NOT NULL DEFAULT 0,
-      actif            INTEGER NOT NULL DEFAULT 1
+      actif            INTEGER NOT NULL DEFAULT 1,
+      stock            INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0)
     )
     ''',
 
@@ -231,6 +256,16 @@ class PrescriptionsSchema {
     CREATE TABLE IF NOT EXISTS apci (
       code_cim10 TEXT PRIMARY KEY,
       libelle    TEXT NOT NULL
+    )
+    ''',
+
+    // Médicaments couverts par une APCI (par DCI : le princeps et ses
+    // génériques), tenus par le pharmacien et contrôlés à la délivrance.
+    '''
+    CREATE TABLE IF NOT EXISTS apci_medicament (
+      code_apci TEXT NOT NULL REFERENCES apci(code_cim10) ON DELETE CASCADE,
+      dci       TEXT NOT NULL,
+      PRIMARY KEY (code_apci, dci)
     )
     ''',
 

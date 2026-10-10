@@ -145,4 +145,20 @@ class ReferentielsManager {
     }
     await _apci.supprimer(code);
   }
+
+  // ----- Médicaments couverts par une APCI (pharmacien) -----
+
+  /// Ajoute une DCI du catalogue à la liste de l'APCI.
+  Future<void> lierDciApci(String code, String dci) async {
+    final String d = dci.trim();
+    if (d.isEmpty) {
+      throw const PrescriptionsException('Choisissez un médicament');
+    }
+    if (await _apci.parCode(code) == null) {
+      throw PrescriptionsException("Le code $code n'est pas dans la liste APCI");
+    }
+    await _apci.lierDci(code, d);
+  }
+
+  Future<void> delierDciApci(String code, String dci) => _apci.delierDci(code, dci);
 }

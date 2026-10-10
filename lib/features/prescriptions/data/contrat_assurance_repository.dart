@@ -81,6 +81,17 @@ class ContratAssuranceRepository {
     await e.update('contrat_assurance', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
   }
 
+  /// APCI déclarée par le médecin (code null : APCI retirée).
+  Future<void> modifierApci(int id, String? codeApci, {DatabaseExecutor? exec}) async {
+    final DatabaseExecutor e = exec ?? await _db;
+    await e.update(
+      'contrat_assurance',
+      {'apci': codeApci == null ? 0 : 1, 'code_apci': codeApci},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   /// Résiliation (date_fin) au lieu de suppression.
   Future<void> resilier(int id, DateTime dateFin, {DatabaseExecutor? exec}) async {
     final DatabaseExecutor e = exec ?? await _db;

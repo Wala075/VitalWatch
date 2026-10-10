@@ -4,16 +4,20 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/error_banner.dart';
 import '../../../../core/widgets/primary_button.dart';
+import '../../domain/couverture_apci.dart';
 import '../../domain/delivrance_manager.dart';
 import '../../domain/formats_prescriptions.dart';
+import '../../domain/models/apci.dart';
 import '../../domain/models/ordonnance.dart';
 import '../../domain/models/vues_ordonnance.dart';
 import '../../domain/prescriptions_exception.dart';
+import '../../domain/regles_stock.dart';
 import '../widgets/elements_ui.dart';
 import '../widgets/substitution_sheet.dart';
 
 /// Délivrance d'une ordonnance contrôlée : boîtes délivrées maintenant,
-/// ligne par ligne (délivrance partielle possible).
+/// ligne par ligne (délivrance partielle possible), limitées au stock ;
+/// prise en charge APCI contrôlée par ligne.
 class DelivranceScreen extends StatefulWidget {
   const DelivranceScreen({super.key, required this.ordonnance});
 
@@ -26,7 +30,8 @@ class DelivranceScreen extends StatefulWidget {
 class _DelivranceScreenState extends State<DelivranceScreen> {
   final DelivranceManager _manager = DelivranceManager();
 
-  /// Ligne id → boîtes délivrées maintenant (par défaut : tout le reste).
+  /// Ligne id → boîtes délivrées maintenant (par défaut : le reste, limité
+  /// au stock).
   final Map<int, int> _boites = {};
   bool _enregistrement = false;
   String? _erreur;
@@ -35,7 +40,7 @@ class _DelivranceScreenState extends State<DelivranceScreen> {
   void initState() {
     super.initState();
     for (final LigneDetail d in widget.ordonnance.lignes) {
-      _boites[d.ligne.id!] = d.ligne.resteADelivrer;
+      _boites[d.ligne.id!] = ReglesStock.delivrable(d.ligne.resteADelivrer, d.medicament.stock);
     }
   }
 
@@ -70,6 +75,7 @@ class _DelivranceScreenState extends State<DelivranceScreen> {
     final OrdonnanceADelivrer od = widget.ordonnance;
     final Ordonnance o = od.resume.ordonnance;
     final String? refus = od.refus;
+    final Apci? apci = od.apci;
 
     return Scaffold(
       appBar: AppBar(title: Text(o.numero)),
@@ -104,6 +110,10 @@ class _DelivranceScreenState extends State<DelivranceScreen> {
                       InfoLigne(
                         icon: Icons.event_available_outlined,
                         texte: "Valable jusqu'au ${Formatters.date(o.dateExpiration)}",
+                      ),
+                      InfoLigne(
+                        icon: Icons.favorite_border_rounded,
+                        texte: apci == null ? 'Pas d’APCI' : 'APCI ${apci.codeCim10} · ${apci.libelle}',
                       ),
                     ],
                   ),
@@ -142,6 +152,8 @@ class _DelivranceScreenState extends State<DelivranceScreen> {
               padding: const EdgeInsets.only(bottom: 10),
               child: _LigneDelivrance(
                 detail: d,
+                statutApci: od.statutApci(d),
+                codeApci: apci?.codeCim10,
                 boites: _boites[d.ligne.id] ?? 0,
                 actif: refus == null && !_enregistrement,
                 onChange: (int n) => setState(() => _boites[d.ligne.id!] = n),
@@ -168,19 +180,38 @@ class _DelivranceScreenState extends State<DelivranceScreen> {
 class _LigneDelivrance extends StatelessWidget {
   const _LigneDelivrance({
     required this.detail,
+    required this.statutApci,
+    required this.codeApci,
     required this.boites,
     required this.actif,
     required this.onChange,
   });
 
   final LigneDetail detail;
+  final StatutApci statutApci;
+  final String? codeApci;
   final int boites;
   final bool actif;
   final ValueChanged<int> onChange;
 
+  String get _texteApci {
+    switch (statutApci) {
+      case StatutApci.couverte:
+        return 'APCI $codeApci : médicament de la liste, pris en charge à 100 %';
+      case StatutApci.horsListe:
+        return "APCI demandée, mais ce médicament n'est pas dans la liste $codeApci : taux normal";
+      case StatutApci.sansApci:
+        return "APCI demandée, mais le patient n'a pas d'APCI active : taux normal";
+      case StatutApci.nonDemandee:
+        return '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final int reste = detail.ligne.resteADelivrer;
+    final int stock = detail.medicament.stock;
+    final int maximum = ReglesStock.delivrable(reste, stock);
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -193,6 +224,31 @@ class _LigneDelivrance extends StatelessWidget {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             Text(detail.posologie, style: const TextStyle(color: AppColors.textSecondary)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                StyleStock.badge(stock),
+                if (statutApci != StatutApci.nonDemandee) StyleApci.badge(statutApci),
+              ],
+            ),
+            if (statutApci != StatutApci.nonDemandee) ...[
+              const SizedBox(height: 6),
+              Text(
+                _texteApci,
+                style: TextStyle(fontSize: 12, color: StyleApci.couleur(statutApci)),
+              ),
+            ],
+            if (reste > 0 && stock < reste) ...[
+              const SizedBox(height: 6),
+              Text(
+                stock == 0
+                    ? 'Rupture de stock : rien à délivrer pour cette ligne'
+                    : 'Stock insuffisant : délivrance partielle (${ReglesStock.boites(stock)} au plus)',
+                style: const TextStyle(fontSize: 12, color: AppColors.danger, fontWeight: FontWeight.w600),
+              ),
+            ],
             const SizedBox(height: 8),
             Row(
               children: [
@@ -214,7 +270,7 @@ class _LigneDelivrance extends StatelessWidget {
                   Text('$boites', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                   IconButton(
                     tooltip: 'Plus',
-                    onPressed: actif && boites < reste ? () => onChange(boites + 1) : null,
+                    onPressed: actif && boites < maximum ? () => onChange(boites + 1) : null,
                     icon: const Icon(Icons.add_circle_outline),
                   ),
                 ],

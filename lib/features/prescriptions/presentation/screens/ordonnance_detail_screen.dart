@@ -15,6 +15,7 @@ import '../../domain/posologie.dart';
 import '../../domain/prescriptions_exception.dart';
 import '../../domain/regles_ordonnance.dart';
 import '../../domain/remboursement_manager.dart';
+import '../widgets/apci_patient_sheet.dart';
 import '../widgets/detail_prise_en_charge.dart';
 import '../widgets/dialogues_ordonnance.dart';
 import '../widgets/elements_ui.dart';
@@ -397,6 +398,18 @@ class _OrdonnanceDetailScreenState extends State<OrdonnanceDetailScreen> {
       appBar: AppBar(
         title: Text(o.numero),
         actions: [
+          // Le médecin déclare l'APCI de son patient.
+          if (!widget.lectureSeule)
+            IconButton(
+              icon: const Icon(Icons.favorite_border_rounded),
+              tooltip: 'APCI du patient',
+              onPressed: () async {
+                final bool modifie = await afficherApciPatient(context, patientId: o.patientId);
+                if (modifie && mounted) {
+                  _message('APCI du patient mise à jour');
+                }
+              },
+            ),
           if (!o.estModifiable)
             IconButton(
               icon: const Icon(Icons.qr_code_2_rounded),

@@ -1,16 +1,21 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../../../core/utils/formatters.dart';
+import '../data/apci_repository.dart';
 import '../data/ligne_ordonnance_repository.dart';
+import '../data/medicament_repository.dart';
 import '../data/ordonnance_repository.dart';
 import '../data/prescriptions_schema.dart';
 import 'authenticite_ordonnance.dart';
+import 'couverture_apci.dart';
 import 'dates_sql.dart';
+import 'models/apci.dart';
 import 'models/ligne_ordonnance.dart';
 import 'models/ordonnance.dart';
 import 'models/vues_ordonnance.dart';
 import 'ordonnance_manager.dart';
 import 'prescriptions_exception.dart';
+import 'regles_stock.dart';
 
 /// Ordonnance retrouvée par le pharmacien, avec le résultat des contrôles.
 class OrdonnanceADelivrer {
@@ -19,16 +24,28 @@ class OrdonnanceADelivrer {
     required this.lignes,
     required this.signatureValide,
     this.refus,
+    this.apci,
+    this.statutsApci = const {},
   });
 
   final OrdonnanceResume resume;
+
+  /// Lignes avec leur médicament (et son stock).
   final List<LigneDetail> lignes;
   final bool signatureValide;
 
   /// Raison du refus de délivrance (null : délivrance possible).
   final String? refus;
 
+  /// APCI active du patient (null : pas d'APCI).
+  final Apci? apci;
+
+  /// Ligne id → prise en charge APCI contrôlée par le pharmacien.
+  final Map<int, StatutApci> statutsApci;
+
   bool get delivrable => refus == null;
+
+  StatutApci statutApci(LigneDetail d) => statutsApci[d.ligne.id] ?? StatutApci.nonDemandee;
 }
 
 /// Métier 5 côté pharmacien : contrôle anti-fraude et délivrance, totale ou
@@ -37,13 +54,19 @@ class DelivranceManager {
   DelivranceManager({
     OrdonnanceRepository? ordonnances,
     LigneOrdonnanceRepository? lignes,
+    MedicamentRepository? medicaments,
+    ApciRepository? apci,
     OrdonnanceManager? manager,
   })  : _ordonnances = ordonnances ?? OrdonnanceRepository(),
         _lignes = lignes ?? LigneOrdonnanceRepository(),
+        _medicaments = medicaments ?? MedicamentRepository(),
+        _apci = apci ?? ApciRepository(),
         _manager = manager ?? OrdonnanceManager();
 
   final OrdonnanceRepository _ordonnances;
   final LigneOrdonnanceRepository _lignes;
+  final MedicamentRepository _medicaments;
+  final ApciRepository _apci;
   final OrdonnanceManager _manager;
 
   /// Ordonnances en attente de délivrance (validées ou partiellement délivrées).
@@ -86,11 +109,28 @@ class DelivranceManager {
       signatureValide = false;
     }
 
+    // APCI : la ligne cochée par le médecin n'est à 100 % que si le
+    // médicament figure dans la liste de l'APCI du patient.
+    final String? code = await _manager.codeApciActif(o.patientId, o.dateEmission);
+    final Apci? apci = code == null ? null : (await _apci.parCode(code) ?? Apci(codeCim10: code, libelle: code));
+    final Set<String> dcis = code == null ? <String>{} : await _apci.dcisCouvertes(code);
+    final Map<int, StatutApci> statuts = {};
+    for (final LigneDetail d in lignes) {
+      statuts[d.ligne.id!] = CouvertureApci.statut(
+        lienApci: d.ligne.lienApci,
+        codeApci: code,
+        dcisCouvertes: dcis,
+        dci: d.medicament.dci,
+      );
+    }
+
     return OrdonnanceADelivrer(
       resume: resume,
       lignes: lignes,
       signatureValide: signatureValide,
       refus: _refus(o, signatureValide),
+      apci: apci,
+      statutsApci: statuts,
     );
   }
 
@@ -134,6 +174,11 @@ class DelivranceManager {
           '${d.medicament.libelle} : au plus ${d.ligne.resteADelivrer} boîte(s) à délivrer',
         );
       }
+      if (n > d.medicament.stock) {
+        throw PrescriptionsException(
+          '${d.medicament.libelle} : stock insuffisant (${ReglesStock.boites(d.medicament.stock)} en stock)',
+        );
+      }
       total += n;
     }
     if (total == 0) {
@@ -147,6 +192,10 @@ class DelivranceManager {
         final int n = boitesParLigne[d.ligne.id] ?? 0;
         final int delivree = d.ligne.quantiteDelivree + n;
         if (n > 0) {
+          // Sortie de stock dans la même transaction que la délivrance.
+          if (!await _medicaments.retirerStock(d.medicament.id!, n, exec: txn)) {
+            throw PrescriptionsException('${d.medicament.libelle} : stock insuffisant');
+          }
           await _lignes.enregistrerDelivrance(d.ligne.id!, delivree, exec: txn);
         }
         if (delivree < d.ligne.quantiteBoites) {

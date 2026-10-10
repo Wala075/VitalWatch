@@ -9,8 +9,11 @@ import '../../../domain/models/apci.dart';
 import '../../../domain/prescriptions_permissions.dart';
 import '../../widgets/apci_dialog.dart';
 import '../../widgets/elements_ui.dart';
+import '../apci_detail_screen.dart';
 
-/// Référentiel APCI : maladies (code CIM-10) prises en charge à 100 %.
+/// APCI : maladies (code CIM-10) prises en charge à 100 %.
+/// Le médecin tient la liste des maladies ; le pharmacien, les médicaments
+/// couverts par chacune.
 class ApciTab extends StatefulWidget {
   const ApciTab({super.key, required this.role});
 
@@ -24,6 +27,7 @@ class _ApciTabState extends State<ApciTab> {
   final ApciRepository _repo = ApciRepository();
 
   List<Apci> _liste = [];
+  Map<String, int> _nbDci = {};
   bool _chargement = true;
   String _texte = '';
   int _requete = 0;
@@ -37,35 +41,53 @@ class _ApciTabState extends State<ApciTab> {
   Future<void> _charger() async {
     final int requete = ++_requete;
     final List<Apci> res = await _repo.lister(texte: _texte);
+    final Map<String, int> nbDci = await _repo.nbDciParCode();
     if (!mounted || requete != _requete) {
       return;
     }
     setState(() {
       _liste = res;
+      _nbDci = nbDci;
       _chargement = false;
     });
   }
 
-  Future<void> _ouvrir([Apci? apci]) async {
-    final bool modifie = await afficherApciDialog(context, apci: apci);
+  Future<void> _ajouter() async {
+    final bool modifie = await afficherApciDialog(context);
     if (modifie) {
       _charger();
     }
   }
 
+  Future<void> _ouvrir(Apci apci) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(builder: (_) => ApciDetailScreen(apci: apci, role: widget.role)),
+    );
+    _charger();
+  }
+
+  String _sousTitre(Apci a) {
+    final int n = _nbDci[a.codeCim10] ?? 0;
+    if (n == 0) {
+      return 'Aucun médicament couvert';
+    }
+    return '$n médicament${n > 1 ? 's' : ''} couvert${n > 1 ? 's' : ''} (DCI)';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool gerer = widget.role.gererReferentiels;
+    final bool gererCodes = widget.role.gererApci;
 
     return SafeArea(
       bottom: false,
       child: Column(
         children: [
           EnTetePage(
-            surtitre: 'Prise en charge à 100 %',
+            surtitre: gererCodes ? 'Maladies prises en charge à 100 %' : 'Médicaments couverts à 100 %',
             titre: 'APCI',
-            trailing: gerer
-                ? BoutonAjout(tooltip: 'Ajouter une maladie', onPressed: () => _ouvrir())
+            trailing: gererCodes
+                ? BoutonAjout(tooltip: 'Ajouter une maladie', onPressed: _ajouter)
                 : null,
           ),
           Padding(
@@ -95,11 +117,12 @@ class _ApciTabState extends State<ApciTab> {
                           separatorBuilder: (_, _) => const SizedBox(height: 8),
                           itemBuilder: (BuildContext context, int i) {
                             final Apci a = _liste[i];
+                            final bool sansMedicament = (_nbDci[a.codeCim10] ?? 0) == 0;
                             return Card(
                               margin: EdgeInsets.zero,
                               clipBehavior: Clip.antiAlias,
                               child: ListTile(
-                                onTap: gerer ? () => _ouvrir(a) : null,
+                                onTap: () => _ouvrir(a),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                                 leading: Container(
                                   width: 56,
@@ -124,9 +147,14 @@ class _ApciTabState extends State<ApciTab> {
                                     color: AppColors.textPrimary,
                                   ),
                                 ),
-                                trailing: gerer
-                                    ? const Icon(Icons.chevron_right_rounded)
-                                    : null,
+                                subtitle: Text(
+                                  _sousTitre(a),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: sansMedicament ? AppColors.warning : AppColors.textSecondary,
+                                  ),
+                                ),
+                                trailing: const Icon(Icons.chevron_right_rounded),
                               ),
                             );
                           },

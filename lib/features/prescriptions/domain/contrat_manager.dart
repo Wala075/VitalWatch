@@ -1,6 +1,7 @@
 import '../data/apci_repository.dart';
 import '../data/assurance_repository.dart';
 import '../data/contrat_assurance_repository.dart';
+import 'models/apci.dart';
 import 'models/assurance.dart';
 import 'models/contrat_assurance.dart';
 import 'prescriptions_exception.dart';
@@ -83,5 +84,44 @@ class ContratManager {
       throw const PrescriptionsException('La fin du contrat doit suivre son début');
     }
     await _contrats.resilier(c.id!, dateFin);
+  }
+
+  // =====================================================================
+  // APCI du patient : déclarée par le médecin (l'admin gère le contrat)
+  // =====================================================================
+
+  /// Contrat CNAM actif aujourd'hui : c'est lui qui porte l'APCI.
+  Future<ContratAssurance?> contratCnamActif(int patientId) async {
+    for (final ContratAssurance c in await _contrats.actifsLe(patientId, DateTime.now())) {
+      final Assurance? a = await _assurances.parId(c.assuranceId);
+      if (a != null && a.estObligatoire) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  /// APCI actuelle du patient (null : pas d'APCI).
+  Future<Apci?> apciDuPatient(int patientId) async {
+    final ContratAssurance? c = await contratCnamActif(patientId);
+    final String? code = c?.codeApci;
+    if (c == null || !c.apci || code == null) {
+      return null;
+    }
+    return await _apci.parCode(code) ?? Apci(codeCim10: code, libelle: code);
+  }
+
+  /// Le médecin déclare l'APCI de son patient ([code] null : il la retire).
+  Future<void> declarerApci(int patientId, String? code) async {
+    final ContratAssurance? c = await contratCnamActif(patientId);
+    if (c == null) {
+      throw const PrescriptionsException(
+        "Pas de contrat CNAM actif : l'administrateur doit d'abord l'ajouter",
+      );
+    }
+    if (code != null && await _apci.parCode(code) == null) {
+      throw PrescriptionsException("Le code $code n'est pas dans la liste APCI");
+    }
+    await _contrats.modifierApci(c.id!, code);
   }
 }

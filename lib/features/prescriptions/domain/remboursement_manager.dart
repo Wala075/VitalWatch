@@ -2,12 +2,14 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/utils/formatters.dart';
 import '../data/api/konnect_api.dart';
+import '../data/apci_repository.dart';
 import '../data/assurance_repository.dart';
 import '../data/contrat_assurance_repository.dart';
 import '../data/dossier_remboursement_repository.dart';
 import '../data/prescriptions_schema.dart';
 import '../data/taux_couverture_repository.dart';
 import 'calcul_prise_en_charge.dart';
+import 'couverture_apci.dart';
 import 'models/assurance.dart';
 import 'models/contrat_assurance.dart';
 import 'models/dossier_remboursement.dart';
@@ -28,12 +30,14 @@ class RemboursementManager {
     AssuranceRepository? assurances,
     TauxCouvertureRepository? taux,
     DossierRemboursementRepository? dossiers,
+    ApciRepository? apci,
     KonnectApi? konnect,
   })  : _ordonnances = ordonnances ?? OrdonnanceManager(),
         _contrats = contrats ?? ContratAssuranceRepository(),
         _assurances = assurances ?? AssuranceRepository(),
         _taux = taux ?? TauxCouvertureRepository(),
         _dossiers = dossiers ?? DossierRemboursementRepository(),
+        _apci = apci ?? ApciRepository(),
         _konnect = konnect ?? KonnectApi();
 
   final OrdonnanceManager _ordonnances;
@@ -41,6 +45,7 @@ class RemboursementManager {
   final AssuranceRepository _assurances;
   final TauxCouvertureRepository _taux;
   final DossierRemboursementRepository _dossiers;
+  final ApciRepository _apci;
   final KonnectApi _konnect;
 
   // =====================================================================
@@ -128,7 +133,8 @@ class RemboursementManager {
   Future<DetailPriseEnCharge> calculer(Ordonnance o, {bool simulation = false}) async {
     final Eligibilite e = await eligibilite(o);
     final List<String> remarques = [...e.bloquants, ...e.remarques];
-    final bool enApci = await _ordonnances.estEnApci(o.patientId, o.dateEmission);
+    final String? codeApci = await _ordonnances.codeApciActif(o.patientId, o.dateEmission);
+    final Set<String> dcisApci = codeApci == null ? <String>{} : await _apci.dcisCouvertes(codeApci);
     double? plafond = e.plafondRestant;
 
     final List<DetailLigne> lignes = [];
@@ -137,14 +143,23 @@ class RemboursementManager {
       if (boites == 0) {
         continue;
       }
-      final bool apci = d.ligne.lienApci && enApci;
-      if (d.ligne.lienApci && !enApci) {
+      // 100 % seulement si le médecin a lié la ligne à l'APCI et que le
+      // médicament est dans la liste tenue par le pharmacien.
+      final StatutApci statutApci = CouvertureApci.statut(
+        lienApci: d.ligne.lienApci,
+        codeApci: codeApci,
+        dcisCouvertes: dcisApci,
+        dci: d.medicament.dci,
+      );
+      if (statutApci == StatutApci.sansApci) {
         remarques.add('${d.medicament.libelle} : APCI non reconnue, taux normal appliqué');
+      } else if (statutApci == StatutApci.horsListe) {
+        remarques.add('${d.medicament.libelle} : hors liste APCI $codeApci, taux normal appliqué');
       }
       final DetailLigne ligne = await _calculerMedicament(
         d.medicament,
         boites,
-        apci: apci,
+        apci: statutApci.aCent,
         eligibilite: e,
         plafondRestant: plafond,
       );

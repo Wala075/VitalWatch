@@ -74,13 +74,19 @@ class OrdonnanceManager {
 
   /// Le patient a-t-il un contrat APCI actif pour une de ses maladies chroniques ?
   Future<bool> estEnApci(int patientId, DateTime date) async {
+    return await codeApciActif(patientId, date) != null;
+  }
+
+  /// Code de l'APCI active du patient à [date] (null : pas d'APCI).
+  Future<String?> codeApciActif(int patientId, DateTime date) async {
     final List<String> chroniques = await _patients.codesCimChroniques(patientId);
     for (final ContratAssurance c in await _contrats.actifsLe(patientId, date)) {
-      if (c.apci && chroniques.contains(c.codeApci)) {
-        return true;
+      final String? code = c.codeApci;
+      if (c.apci && code != null && chroniques.contains(code)) {
+        return code;
       }
     }
-    return false;
+    return null;
   }
 
   // =====================================================================

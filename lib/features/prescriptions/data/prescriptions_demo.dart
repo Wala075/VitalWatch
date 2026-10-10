@@ -802,6 +802,59 @@ class PrescriptionsDemo {
   }
 
   /// Contrat CNAM (ou complémentaire) du patient, sous forme de ligne brute.
+  // =====================================================================
+  // Stock de la pharmacie et médicaments couverts par les APCI
+  // =====================================================================
+
+  /// Boîtes en stock (les autres médicaments : [stockParDefaut]).
+  /// Tahor bas et Plavix en rupture pour montrer les alertes.
+  static const int stockParDefaut = 25;
+  static const Map<String, int> stocks = {
+    'Doliprane': 40,
+    'Paracétamol Générique': 60,
+    'Glucophage': 12,
+    'Metformine Générique': 30,
+    'Tahor': 2,
+    'Lantus': 4,
+    'Plavix': 0,
+    'Magné B6': 8,
+  };
+
+  /// APCI → DCI des médicaments couverts.
+  static const Map<String, List<String>> medicamentsApci = {
+    'E10': ['insuline glargine'],
+    'E11': ['metformine', 'insuline glargine'],
+    'I10': ['amlodipine'],
+    'I25': ['atorvastatine', 'clopidogrel', 'acide acétylsalicylique'],
+    'J45': ['salbutamol'],
+  };
+
+  static Future<void> stockEtApci(Transaction txn) async {
+    await txn.rawUpdate('UPDATE medicament SET stock = ? WHERE stock = 0', [stockParDefaut]);
+    for (final String nom in stocks.keys) {
+      await txn.update(
+        'medicament',
+        {'stock': stocks[nom]},
+        where: 'nom_commercial = ?',
+        whereArgs: [nom],
+      );
+    }
+    for (final String code in medicamentsApci.keys) {
+      final List<Map<String, Object?>> existe =
+          await txn.query('apci', columns: ['code_cim10'], where: 'code_cim10 = ?', whereArgs: [code]);
+      if (existe.isEmpty) {
+        continue;
+      }
+      for (final String dci in medicamentsApci[code]!) {
+        await txn.insert(
+          'apci_medicament',
+          {'code_apci': code, 'dci': dci},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    }
+  }
+
   static Future<Map<String, Object?>?> _contrat(Transaction txn, int patientId, {required bool cnam}) async {
     final List<Map<String, Object?>> rows = await txn.rawQuery('''
       SELECT c.* FROM contrat_assurance c

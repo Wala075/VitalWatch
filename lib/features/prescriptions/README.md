@@ -27,13 +27,14 @@ module 3 : `app_database.dart` n'est pas modifié.
 
 | Table | Rôle | Liée à |
 |---|---|---|
-| `medicament` | Catalogue : DCI, forme, dosage, prix, catégorie | — |
+| `medicament` | Catalogue : DCI, forme, dosage, prix, catégorie, stock de la pharmacie | — |
 | `ordonnance` | Document daté, validité, statut, signature | `patients`, `medecins`, `ordonnance` |
 | `ligne_ordonnance` | Médicament, posologie, durée, boîtes | `ordonnance`, `medicament` |
 | `prise` | Prise prévue et son suivi | `ligne_ordonnance` |
 | `assurance` | CNAM, mutuelle, assurance privée | — |
 | `taux_couverture` | Taux par catégorie (`tous` pour une mutuelle) | `assurance` |
-| `apci` | Code CIM-10 → maladie prise en charge à 100 % | — |
+| `apci` | Code CIM-10 → maladie prise en charge à 100 % (tenu par le médecin) | — |
+| `apci_medicament` | Médicaments (DCI) couverts par chaque APCI (tenus par le pharmacien) | `apci` |
 | `contrat_assurance` | Couverture d'un patient | `patients`, `assurance`, `apci` |
 | `dossier_remboursement` | Demande de remboursement | `ordonnance`, `contrat_assurance` |
 | `prescriptions_meta` | Drapeaux internes du module (données de démo déjà créées…) | — |
@@ -43,7 +44,9 @@ module 3 : `app_database.dart` n'est pas modifié.
 - `ordonnance.medecin_id` → `medecins(id)` (le compte connecté y pointe via `utilisateurs.ref_id`) ;
 - `consultation_id` sans clé étrangère tant que la table du module Rendez-vous n'existe pas ;
 - `patient_id` en `ON DELETE RESTRICT` : un patient qui a une ordonnance ou un contrat
-  ne peut pas être supprimé (à afficher proprement côté Services).
+  ne peut pas être supprimé (à afficher proprement côté Services) ;
+- ajoutés à la demande : `medicament.stock` (colonne ajoutée par `ALTER TABLE` sur une
+  base déjà créée) et la table `apci_medicament`.
 
 Déclencheurs (refus directement dans la base) :
 
@@ -67,21 +70,24 @@ observance, alertes) qui ouvre le module (`home_tab.dart`, fichier commun).
 | Profil | Onglets |
 |---|---|
 | Patient | Aujourd'hui · Ordonnances · Remboursements |
-| Médecin | Ordonnances · Catalogue · Stats (les siennes) |
-| Pharmacien | Délivrance · Catalogue |
+| Médecin | Ordonnances · APCI · Catalogue · Stats (les siennes) |
+| Pharmacien | Délivrance · Stock · APCI |
 | Infirmier | Patients (lecture) · Catalogue |
-| Admin | Catalogue · Assurances · APCI · Patients · Dossiers · Stats |
+| Admin | Catalogue · Assurances · Patients · Dossiers · Stats |
 
 | Onglet | Contenu |
 |---|---|
 | Ordonnances (médecin) | ses ordonnances (filtres statut, période, recherche), nouvelle ordonnance, fiche avec actions selon le statut, bandeau des patients sous 80 % d'observance |
 | Catalogue | recherche nom / DCI, filtres catégorie et générique, tri par prix, archivage (modification : admin) |
-| Assurances / APCI | organismes, plafond, délai de réponse, taux par catégorie ; codes CIM-10 à 100 % |
-| Délivrance | scan du QR code ou saisie du numéro, contrôle de la signature, boîtes délivrées ligne par ligne (partielle ou complète), génériques moins chers |
+| Assurances | organismes, plafond, délai de réponse, taux par catégorie |
+| APCI (médecin) | maladies CIM-10 prises en charge à 100 % : ajout, libellé, suppression (si aucun contrat) |
+| APCI (pharmacien) | médicaments (DCI) couverts par chaque maladie : ajout, retrait |
+| Délivrance | scan du QR code ou saisie du numéro, contrôle de la signature, APCI de chaque ligne (100 % ou taux normal), boîtes délivrées limitées au stock, génériques moins chers |
+| Stock | ruptures et stocks faibles (≤ 5 boîtes) d'abord, recherche nom / DCI / code-barres, entrée de stock |
 | Aujourd'hui | prises du jour à cocher, navigation par jour, observance 7 jours, stock restant, alerte fin de stock avec bouton Renouveler |
 | Ordonnances (patient) | ses ordonnances (sans brouillons), QR code, PDF, simulation du remboursement, création du dossier |
 | Remboursements | contrats et plafond consommé, ordonnances à déclarer, dossiers |
-| Patients | fiche Ordonnances & Assurance du patient (`OrdonnancesPatientTab`) : traitements, ordonnances, contrats (ajout / résiliation : admin), dossiers |
+| Patients | fiche Ordonnances & Assurance du patient (`OrdonnancesPatientTab`) : traitements, ordonnances, contrats (ajout / résiliation : admin, APCI en lecture), dossiers |
 | Dossiers | tous les dossiers par statut, relances des dossiers sans réponse, réponse CNAM, marquer remboursé |
 | Stats | dépenses mensuelles, par patient, CNAM / mutuelle / patient, refus par motif, délai moyen, médicaments coûteux, économie génériques |
 
@@ -89,12 +95,19 @@ Règles : `domain/referentiels_manager.dart` (base) et `domain/regles_referentie
 (contrôles purs, testés). Un médicament déjà prescrit est archivé au lieu d'être
 supprimé ; une assurance ou un code APCI utilisé par un contrat ne se supprime pas.
 
-## Rôle pharmacien
+## Rôles et APCI
 
 `Role.pharmacien` ajouté dans `models/utilisateur.dart` (fichier commun).
 Compte de démo créé par le module : `pharmacien@vitalwatch.tn` / `pharmacien123`.
 
-Droits : `domain/prescriptions_permissions.dart`.
+| Qui | Fait quoi |
+|---|---|
+| Médecin | remplit l'ordonnance, tient la liste des maladies APCI, déclare l'APCI de son patient (icône ♡ de la fiche ordonnance ou formulaire de ligne), coche « liée à l'APCI » sur une ligne |
+| Pharmacien | tient la liste des médicaments couverts par chaque APCI, délivre (100 % seulement si le médicament est dans la liste), consulte et réapprovisionne le stock |
+| Admin | catalogue, assurances, contrats (l'APCI y est en lecture seule), dossiers |
+
+Droits : `domain/prescriptions_permissions.dart` ; règles : `domain/couverture_apci.dart`
+et `domain/regles_stock.dart` (testées).
 
 ## Données de démo (`data/prescriptions_demo.dart`)
 
@@ -111,6 +124,11 @@ les statistiques : 5 ordonnances délivrées des 5 derniers mois avec leurs
 dossiers (remboursé, refusé « pièce manquante », en cours depuis 40 jours →
 relance, partiel).
 
+Stock et médicaments APCI créés une seule fois (drapeau `demo_stock_apci`) :
+25 boîtes par défaut, Tahor 2 (stock faible), Plavix 0 (rupture) ; E11 couvre
+metformine et insuline glargine, I10 amlodipine, I25 atorvastatine, clopidogrel
+et aspirine, J45 salbutamol.
+
 Prix, taux et plafonds : valeurs d'illustration, modifiables par l'admin.
 
 ## Métiers (`domain/`)
@@ -120,7 +138,9 @@ Prix, taux et plafonds : valeurs d'illustration, modifiables par l'admin.
 | `calcul_boites.dart` | boîtes = ⌈dose × prises/jour × durée ÷ unités par boîte⌉ |
 | `planning_prises.dart` | une prise par jour et par moment (nuit 3 h, matin 8 h, midi 13 h, après-midi 17 h, soir 20 h, coucher 22 h) |
 | `authenticite_ordonnance.dart` | SHA-256 de l'ordonnance, QR `VITALWATCH\|numéro\|hash`, lecture du QR ou du numéro |
-| `delivrance_manager.dart` | refuse brouillon, annulée, délivrée, expirée ou signature modifiée ; délivrance partielle ou complète |
+| `delivrance_manager.dart` | refuse brouillon, annulée, délivrée, expirée ou signature modifiée ; délivrance partielle ou complète ; sortie de stock dans la même transaction |
+| `couverture_apci.dart` | ligne liée à l'APCI × médicament dans la liste du pharmacien → 100 %, sinon taux normal |
+| `regles_stock.dart` | rupture / faible (≤ 5) / normal, boîtes délivrables = min(reste, stock) |
 | `traitement_manager.dart` | prise oubliée 3 h après l'heure, observance, alerte médecin sous 80 %, stock ≤ 3 jours |
 | `calcul_prise_en_charge.dart` | base = min(prix, prix de référence) × boîtes ; CNAM = base × taux (100 % APCI), limitée au plafond ; mutuelle sur le reste |
 | `service_cnam_simule.dart` | contrat expiré → refusé ; part > plafond restant → partiel ; sinon accepté (issue forçable pour la démo) |

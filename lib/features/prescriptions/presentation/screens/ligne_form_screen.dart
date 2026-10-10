@@ -5,7 +5,9 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/error_banner.dart';
 import '../../../../core/widgets/primary_button.dart';
+import '../../data/apci_repository.dart';
 import '../../domain/calcul_boites.dart';
+import '../../domain/couverture_apci.dart';
 import '../../domain/formats_prescriptions.dart';
 import '../../domain/models/ligne_ordonnance.dart';
 import '../../domain/models/medicament.dart';
@@ -17,6 +19,7 @@ import '../../domain/posologie.dart';
 import '../../domain/prescriptions_exception.dart';
 import '../../domain/regles_ordonnance.dart';
 import '../../domain/saisie.dart';
+import '../widgets/apci_patient_sheet.dart';
 import '../widgets/dialogues_ordonnance.dart';
 import '../widgets/elements_ui.dart';
 import '../widgets/substitution_sheet.dart';
@@ -45,6 +48,8 @@ class _LigneFormScreenState extends State<LigneFormScreen> {
   bool _substitution = true;
   bool _apci = false;
   bool _patientApci = false;
+  String? _codeApci;
+  Set<String> _dcisApci = {};
   bool _enregistrement = false;
   String? _erreur;
 
@@ -70,13 +75,41 @@ class _LigneFormScreenState extends State<LigneFormScreen> {
   }
 
   Future<void> _verifierApci() async {
-    final bool apci = await _manager.estEnApci(
+    final String? code = await _manager.codeApciActif(
       widget.ordonnance.patientId,
       widget.ordonnance.dateEmission,
     );
+    final Set<String> dcis = code == null ? <String>{} : await ApciRepository().dcisCouvertes(code);
     if (mounted) {
-      setState(() => _patientApci = apci);
+      setState(() {
+        _codeApci = code;
+        _patientApci = code != null;
+        _dcisApci = dcis;
+      });
     }
+  }
+
+  /// Le médecin déclare ou change l'APCI du patient, puis on revérifie.
+  Future<void> _declarerApci() async {
+    final bool modifie = await afficherApciPatient(context, patientId: widget.ordonnance.patientId);
+    if (modifie) {
+      await _verifierApci();
+    }
+  }
+
+  /// Ligne cochée APCI mais médicament hors de la liste du pharmacien.
+  bool get _horsListeApci {
+    final Medicament? m = _medicament;
+    if (!_apci || m == null) {
+      return false;
+    }
+    return CouvertureApci.statut(
+          lienApci: true,
+          codeApci: _codeApci,
+          dcisCouvertes: _dcisApci,
+          dci: m.dci,
+        ) ==
+        StatutApci.horsListe;
   }
 
   void _rafraichir() => setState(() {});
@@ -283,11 +316,28 @@ class _LigneFormScreenState extends State<LigneFormScreen> {
                   title: const Text('Liée à la maladie APCI (100 %)'),
                   subtitle: Text(
                     _patientApci
-                        ? 'Le patient a un contrat APCI actif'
+                        ? 'APCI $_codeApci déclarée pour ce patient'
                         : "Ce patient n'est pas en APCI",
                   ),
                   value: _apci,
                   onChanged: _patientApci || _apci ? (bool v) => setState(() => _apci = v) : null,
+                ),
+                if (_horsListeApci)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      "${_medicament?.dci} n'est pas dans la liste APCI $_codeApci du pharmacien : "
+                      'il sera remboursé au taux normal.',
+                      style: const TextStyle(fontSize: 13, color: AppColors.warning, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _declarerApci,
+                    icon: const Icon(Icons.favorite_border_rounded, size: 18),
+                    label: Text(_patientApci ? "Modifier l'APCI du patient" : "Déclarer l'APCI du patient"),
+                  ),
                 ),
               ],
             ),

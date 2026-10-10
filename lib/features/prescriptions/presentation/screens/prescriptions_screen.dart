@@ -16,12 +16,13 @@ import 'tabs/ordonnances_tab.dart';
 import 'tabs/patients_tab.dart';
 import 'tabs/remboursements_tab.dart';
 import 'tabs/stats_tab.dart';
+import 'tabs/stock_tab.dart';
 
 /// MODULE 5 — Ordonnances & Assurance.
 /// Les onglets dépendent du profil connecté (voir PrescriptionsPermissions) :
-/// - admin : catalogue, assurances, APCI, patients, dossiers, statistiques ;
-/// - médecin : ses ordonnances, catalogue, statistiques ;
-/// - pharmacien : délivrance, catalogue ;
+/// - admin : catalogue, assurances, patients (contrats), dossiers, statistiques ;
+/// - médecin : ses ordonnances, APCI (maladies), catalogue, statistiques ;
+/// - pharmacien : délivrance, stock, APCI (médicaments couverts) ;
 /// - infirmier : patients, catalogue ;
 /// - patient : aujourd'hui, ses ordonnances, ses remboursements.
 class PrescriptionsScreen extends StatefulWidget {
@@ -82,24 +83,36 @@ class _PrescriptionsScreenState extends State<PrescriptionsScreen> {
           (Key k) => DelivranceTab(key: k),
         ));
       }
+      if (role.gererStock) {
+        onglets.add(_Onglet(
+          const NavItem(Icons.inventory_2_rounded, 'Stock'),
+          (Key k) => StockTab(key: k),
+        ));
+      }
+      // Médecin : avant le catalogue ; pharmacien : après le stock.
+      if (role.voirApci) {
+        onglets.add(_Onglet(
+          const NavItem(Icons.favorite_rounded, 'APCI'),
+          (Key k) => ApciTab(key: k, role: role),
+        ));
+      }
       if (role.voirPatients && !role.gererReferentiels) {
         onglets.add(_Onglet(
           const NavItem(Icons.people_alt_rounded, 'Patients'),
           (Key k) => PatientsTab(key: k, role: role),
         ));
       }
-      onglets.add(_Onglet(
-        const NavItem(Icons.medication_rounded, 'Catalogue'),
-        (Key k) => CatalogueTab(key: k, role: role),
-      ));
+      // Le pharmacien consulte les médicaments dans l'onglet Stock.
+      if (!role.gererStock) {
+        onglets.add(_Onglet(
+          const NavItem(Icons.medication_rounded, 'Catalogue'),
+          (Key k) => CatalogueTab(key: k, role: role),
+        ));
+      }
       if (role.gererReferentiels) {
         onglets.add(_Onglet(
           const NavItem(Icons.shield_rounded, 'Assurances'),
           (Key k) => AssurancesTab(key: k, role: role),
-        ));
-        onglets.add(_Onglet(
-          const NavItem(Icons.favorite_rounded, 'APCI'),
-          (Key k) => ApciTab(key: k, role: role),
         ));
         onglets.add(_Onglet(
           const NavItem(Icons.people_alt_rounded, 'Patients'),

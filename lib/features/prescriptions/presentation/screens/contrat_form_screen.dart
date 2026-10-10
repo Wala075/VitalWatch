@@ -46,6 +46,17 @@ class _ContratFormScreenState extends State<ContratFormScreen> {
 
   bool get _edition => widget.contrat != null;
 
+  /// « E11 · Diabète de type 2 »
+  String _libelleApci() {
+    final String code = _codeApci ?? '';
+    for (final Apci a in _codes) {
+      if (a.codeCim10 == code) {
+        return '${a.codeCim10} · ${a.libelle}';
+      }
+    }
+    return code;
+  }
+
   Assurance? get _assurance {
     for (final Assurance a in _assurances) {
       if (a.id == _assuranceId) {
@@ -287,30 +298,21 @@ class _ContratFormScreenState extends State<ContratFormScreen> {
             ),
             if (cnam) ...[
               const SizedBox(height: 12),
+              // L'APCI est déclarée par le médecin (fiche ordonnance) :
+              // l'administrateur la voit sans la modifier.
               SectionFormulaire(
                 titre: 'APCI (prise en charge à 100 %)',
                 icon: Icons.favorite_border_rounded,
                 children: [
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Patient en APCI'),
-                    value: _apci,
-                    onChanged: (bool v) => setState(() => _apci = v),
+                  Text(
+                    _apci ? _libelleApci() : 'Aucune APCI',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  if (_apci)
-                    AppDropdownField<String>(
-                      label: 'Maladie',
-                      icon: Icons.medical_information_outlined,
-                      value: _codeApci,
-                      items: [
-                        for (final Apci a in _codes)
-                          DropdownMenuItem<String>(
-                            value: a.codeCim10,
-                            child: Text('${a.codeCim10} · ${a.libelle}'),
-                          ),
-                      ],
-                      onChanged: (String? v) => setState(() => _codeApci = v),
-                    ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "Déclarée par le médecin depuis l'ordonnance du patient.",
+                    style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  ),
                 ],
               ),
             ],

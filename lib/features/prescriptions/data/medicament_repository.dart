@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../domain/models/medicament.dart';
+import '../domain/regles_stock.dart';
 import 'prescriptions_schema.dart';
 
 class MedicamentRepository {
@@ -142,6 +143,87 @@ class MedicamentRepository {
   Future<void> supprimer(int id, {DatabaseExecutor? exec}) async {
     final DatabaseExecutor e = exec ?? await _db;
     await e.delete('medicament', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ----- Stock de la pharmacie -----
+
+  /// Médicaments du catalogue avec leur stock, ruptures et stocks faibles
+  /// d'abord ; [niveau] filtre (rupture, faible, normal).
+  Future<List<Medicament>> stock({String texte = '', NiveauStock? niveau}) async {
+    final Database db = await _db;
+    final List<String> conditions = ['actif = 1'];
+    final List<Object?> args = [];
+    final String t = texte.trim();
+    if (t.isNotEmpty) {
+      conditions.add('(nom_commercial LIKE ? OR dci LIKE ? OR code_barres = ?)');
+      args.add('%$t%');
+      args.add('%$t%');
+      args.add(t);
+    }
+    if (niveau == NiveauStock.rupture) {
+      conditions.add('stock <= 0');
+    } else if (niveau == NiveauStock.faible) {
+      conditions.add('stock > 0 AND stock <= ?');
+      args.add(ReglesStock.seuilFaible);
+    } else if (niveau == NiveauStock.normal) {
+      conditions.add('stock > ?');
+      args.add(ReglesStock.seuilFaible);
+    }
+    final List<Map<String, Object?>> rows = await db.query(
+      'medicament',
+      where: conditions.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'stock > ${ReglesStock.seuilFaible}, stock, nom_commercial COLLATE NOCASE',
+    );
+    return _liste(rows);
+  }
+
+  /// Nombre de médicaments en rupture et en stock faible.
+  Future<({int ruptures, int faibles})> alertesStock() async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows = await db.rawQuery(
+      'SELECT SUM(CASE WHEN stock <= 0 THEN 1 ELSE 0 END) AS ruptures, '
+      'SUM(CASE WHEN stock > 0 AND stock <= ? THEN 1 ELSE 0 END) AS faibles '
+      'FROM medicament WHERE actif = 1',
+      [ReglesStock.seuilFaible],
+    );
+    final Map<String, Object?> r = rows.first;
+    return (ruptures: (r['ruptures'] as int?) ?? 0, faibles: (r['faibles'] as int?) ?? 0);
+  }
+
+  /// Entrée de stock (réception d'une commande).
+  Future<void> ajouterStock(int id, int boites, {DatabaseExecutor? exec}) async {
+    final DatabaseExecutor e = exec ?? await _db;
+    await e.rawUpdate('UPDATE medicament SET stock = stock + ? WHERE id = ?', [boites, id]);
+  }
+
+  /// Sortie de stock (délivrance) : false si le stock ne suffit pas.
+  Future<bool> retirerStock(int id, int boites, {DatabaseExecutor? exec}) async {
+    final DatabaseExecutor e = exec ?? await _db;
+    final int n = await e.rawUpdate(
+      'UPDATE medicament SET stock = stock - ? WHERE id = ? AND stock >= ?',
+      [boites, id, boites],
+    );
+    return n == 1;
+  }
+
+  // ----- DCI (médicaments couverts par une APCI) -----
+
+  /// DCI du catalogue → noms commerciaux (« metformine » → Glucophage, …).
+  Future<Map<String, List<String>>> nomsParDci() async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows = await db.query(
+      'medicament',
+      columns: ['dci', 'nom_commercial'],
+      where: 'actif = 1',
+      orderBy: 'dci COLLATE NOCASE, generique, nom_commercial COLLATE NOCASE',
+    );
+    final Map<String, List<String>> res = {};
+    for (final Map<String, Object?> r in rows) {
+      final String dci = r['dci'] as String;
+      res.putIfAbsent(dci, () => <String>[]).add(r['nom_commercial'] as String);
+    }
+    return res;
   }
 
   List<Medicament> _liste(List<Map<String, Object?>> rows) {

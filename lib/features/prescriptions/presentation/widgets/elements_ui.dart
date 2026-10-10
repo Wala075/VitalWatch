@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../domain/couverture_apci.dart';
 import '../../domain/models/dossier_remboursement.dart';
 import '../../domain/models/medicament.dart';
 import '../../domain/models/ordonnance.dart';
+import '../../domain/regles_stock.dart';
 
 /// En-tête d'onglet : retour + « surtitre » / « Titre » + action à droite.
 class EnTetePage extends StatelessWidget {
@@ -343,6 +345,79 @@ class StyleDossier {
   }
 
   static BadgeStatut badge(StatutDossier s) {
+    return BadgeStatut(libelle: s.libelle, icon: icone(s), couleur: couleur(s));
+  }
+}
+
+/// Couleur, icône et badge du niveau de stock.
+class StyleStock {
+  StyleStock._();
+
+  static Color couleur(NiveauStock n) {
+    switch (n) {
+      case NiveauStock.rupture:
+        return AppColors.danger;
+      case NiveauStock.faible:
+        return AppColors.warning;
+      case NiveauStock.normal:
+        return AppColors.success;
+    }
+  }
+
+  static IconData icone(NiveauStock n) {
+    switch (n) {
+      case NiveauStock.rupture:
+        return Icons.remove_shopping_cart_outlined;
+      case NiveauStock.faible:
+        return Icons.warning_amber_rounded;
+      case NiveauStock.normal:
+        return Icons.inventory_2_outlined;
+    }
+  }
+
+  /// « 12 boîtes », « Stock faible · 3 boîtes », « Rupture ».
+  static BadgeStatut badge(int stock) {
+    final NiveauStock n = ReglesStock.niveau(stock);
+    final String texte = n == NiveauStock.rupture
+        ? n.libelle
+        : n == NiveauStock.faible
+            ? '${n.libelle} · ${ReglesStock.boites(stock)}'
+            : ReglesStock.boites(stock);
+    return BadgeStatut(libelle: texte, icon: icone(n), couleur: couleur(n));
+  }
+}
+
+/// Couleur, icône et badge de la prise en charge APCI d'une ligne.
+class StyleApci {
+  StyleApci._();
+
+  static Color couleur(StatutApci s) {
+    switch (s) {
+      case StatutApci.couverte:
+        return AppColors.success;
+      case StatutApci.horsListe:
+        return AppColors.warning;
+      case StatutApci.sansApci:
+        return AppColors.danger;
+      case StatutApci.nonDemandee:
+        return AppColors.textSecondary;
+    }
+  }
+
+  static IconData icone(StatutApci s) {
+    switch (s) {
+      case StatutApci.couverte:
+        return Icons.verified_rounded;
+      case StatutApci.horsListe:
+        return Icons.playlist_remove_rounded;
+      case StatutApci.sansApci:
+        return Icons.gpp_maybe_outlined;
+      case StatutApci.nonDemandee:
+        return Icons.percent_rounded;
+    }
+  }
+
+  static BadgeStatut badge(StatutApci s) {
     return BadgeStatut(libelle: s.libelle, icon: icone(s), couleur: couleur(s));
   }
 }

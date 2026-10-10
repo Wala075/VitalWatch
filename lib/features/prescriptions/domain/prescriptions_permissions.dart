@@ -5,8 +5,20 @@ extension PrescriptionsPermissions on Role {
   /// Tous les profils sauf l'ambulancier.
   bool get accesOrdonnances => this != Role.ambulancier;
 
-  /// Catalogue des médicaments, assurances et taux, référentiel APCI.
+  /// Catalogue des médicaments, assurances et taux.
   bool get gererReferentiels => this == Role.admin;
+
+  /// Référentiel APCI (codes CIM-10) et APCI de ses patients : le médecin.
+  bool get gererApci => this == Role.medecin;
+
+  /// Médicaments couverts par chaque APCI, appliqués à la délivrance.
+  bool get gererMedicamentsApci => this == Role.pharmacien;
+
+  /// Onglet APCI : le médecin (codes) et le pharmacien (médicaments).
+  bool get voirApci => gererApci || gererMedicamentsApci;
+
+  /// Stock de la pharmacie : consultation, alertes, entrées.
+  bool get gererStock => this == Role.pharmacien;
 
   /// Créer, valider, annuler, corriger et renouveler une ordonnance.
   bool get prescrire => this == Role.medecin;
@@ -17,7 +29,8 @@ extension PrescriptionsPermissions on Role {
   /// Liste des patients : ordonnances, traitements, contrats, dossiers.
   bool get voirPatients => this == Role.admin || this == Role.infirmier;
 
-  /// Contrats d'assurance des patients (création, résiliation).
+  /// Contrats d'assurance des patients (création, résiliation), sans l'APCI
+  /// qui est déclarée par le médecin.
   bool get gererContrats => this == Role.admin;
 
   /// Réponse de la CNAM simulée, remboursement, relances.
