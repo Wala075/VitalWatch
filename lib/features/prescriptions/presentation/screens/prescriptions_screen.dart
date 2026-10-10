@@ -8,6 +8,7 @@ import '../widgets/ui_commun.dart';
 import 'tabs/apci_tab.dart';
 import 'tabs/assurances_tab.dart';
 import 'tabs/catalogue_tab.dart';
+import 'tabs/ordonnances_tab.dart';
 
 /// MODULE 5 — Ordonnances & Assurance.
 /// Les onglets dépendent du profil connecté (voir PrescriptionsPermissions).
@@ -32,7 +33,15 @@ class _PrescriptionsScreenState extends State<PrescriptionsScreen> {
       );
     }
 
+    // Le compte médecin pointe vers medecins.id via utilisateurs.ref_id.
+    final int? medecinId = Session.utilisateur?.refId;
+
     final List<_Onglet> onglets = [
+      if (role.prescrire && medecinId != null)
+        _Onglet(
+          const NavItem(Icons.description_rounded, 'Ordonnances'),
+          (Key k) => OrdonnancesTab(key: k, medecinId: medecinId),
+        ),
       _Onglet(
         const NavItem(Icons.medication_rounded, 'Catalogue'),
         (Key k) => CatalogueTab(key: k, role: role),

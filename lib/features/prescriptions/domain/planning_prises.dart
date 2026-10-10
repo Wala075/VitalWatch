@@ -4,23 +4,38 @@ import 'models/prise.dart';
 class PlanningPrises {
   PlanningPrises._();
 
-  /// Moments de prise, dans l'ordre de la journée.
-  static const List<String> moments = ['matin', 'midi', 'soir', 'coucher'];
+  /// Moments de prise, dans l'ordre de la journée (jusqu'à 6 prises par jour).
+  static const List<String> moments = ['nuit', 'matin', 'midi', 'apres_midi', 'soir', 'coucher'];
 
   /// Heure de chaque moment (paramétrable).
   static const Map<String, int> heures = {
+    'nuit': 3,
     'matin': 8,
     'midi': 13,
+    'apres_midi': 17,
     'soir': 20,
     'coucher': 22,
   };
 
   static const Map<String, String> libelles = {
+    'nuit': 'Nuit',
     'matin': 'Matin',
     'midi': 'Midi',
+    'apres_midi': 'Après-midi',
     'soir': 'Soir',
     'coucher': 'Coucher',
   };
+
+  /// Moments connus, remis dans l'ordre de la journée, sans doublon.
+  static List<String> trier(Iterable<String> choisis) {
+    final List<String> res = [];
+    for (final String m in moments) {
+      if (choisis.contains(m)) {
+        res.add(m);
+      }
+    }
+    return res;
+  }
 
   /// Une prise par jour et par moment, à partir de [debut].
   ///

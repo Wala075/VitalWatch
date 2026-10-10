@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/models/medicament.dart';
+import '../../domain/models/ordonnance.dart';
 
 /// En-tête d'onglet : retour + « surtitre » / « Titre » + action à droite.
 class EnTetePage extends StatelessWidget {
@@ -254,5 +255,48 @@ class StyleCategorie {
       return Icons.air_rounded;
     }
     return Icons.medication_outlined;
+  }
+}
+
+/// Couleur, icône et badge de chaque statut d'ordonnance.
+class StyleStatut {
+  StyleStatut._();
+
+  static Color couleur(StatutOrdonnance s) {
+    switch (s) {
+      case StatutOrdonnance.brouillon:
+        return AppColors.textSecondary;
+      case StatutOrdonnance.validee:
+        return AppColors.primary;
+      case StatutOrdonnance.partiellementDelivree:
+        return AppColors.warning;
+      case StatutOrdonnance.delivree:
+        return AppColors.success;
+      case StatutOrdonnance.expiree:
+        return AppColors.textSecondary;
+      case StatutOrdonnance.annulee:
+        return AppColors.danger;
+    }
+  }
+
+  static IconData icone(StatutOrdonnance s) {
+    switch (s) {
+      case StatutOrdonnance.brouillon:
+        return Icons.edit_note_rounded;
+      case StatutOrdonnance.validee:
+        return Icons.verified_rounded;
+      case StatutOrdonnance.partiellementDelivree:
+        return Icons.hourglass_bottom_rounded;
+      case StatutOrdonnance.delivree:
+        return Icons.check_circle_rounded;
+      case StatutOrdonnance.expiree:
+        return Icons.event_busy_rounded;
+      case StatutOrdonnance.annulee:
+        return Icons.cancel_rounded;
+    }
+  }
+
+  static BadgeStatut badge(StatutOrdonnance s) {
+    return BadgeStatut(libelle: s.libelle, icon: icone(s), couleur: couleur(s));
   }
 }

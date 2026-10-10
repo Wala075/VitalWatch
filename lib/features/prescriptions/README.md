@@ -11,7 +11,7 @@ traitement, remboursement CNAM / mutuelle et paiement du reste à charge.
 |---|---|---|
 | 1 | Tables, déclencheurs, modèles, repositories, données de test | fait |
 | 2 | Écrans admin : catalogue, assurances, taux, APCI | fait |
-| 3 | Ordonnances côté médecin (cycle de vie, boîtes, verrouillage) | à faire |
+| 3 | Ordonnances côté médecin (cycle de vie, boîtes, verrouillage) | fait |
 | 4 | Planning des prises, observance, fin de stock, renouvellement | à faire |
 | 5 | Prise en charge, dossiers, service CNAM simulé, plafond | à faire |
 | 6 | API RxNorm puis Konnect | à faire |
@@ -61,6 +61,7 @@ heures, même format que `datetime()` de SQLite.
 
 | Onglet | Profils | Contenu |
 |---|---|---|
+| Ordonnances | médecin | ses ordonnances (filtres statut, période, recherche), nouvelle ordonnance pour un de ses patients, fiche avec actions selon le statut |
 | Catalogue | tous (sauf ambulancier) ; modification : admin | recherche nom / DCI, filtres catégorie et générique, tri par prix, archivage |
 | Assurances | admin | organismes, plafond, délai de réponse, taux par catégorie (`tous` pour une mutuelle) |
 | APCI | admin | codes CIM-10 pris en charge à 100 % |
@@ -94,10 +95,26 @@ Prix, taux et plafonds : valeurs d'illustration, modifiables par l'admin.
 - `planning_prises.dart` — une prise par jour et par moment (matin 8 h, midi 13 h, soir 20 h, coucher 22 h)
 - `authenticite_ordonnance.dart` — SHA-256 de l'ordonnance, contenu du QR code
 
-## Gestion Patients (Abir)
+## Cycle de vie (`domain/ordonnance_manager.dart`)
 
-`analyserTraitement()` et `codesCimChroniques()` n'existent pas encore : une
-version provisoire sera branchée à l'étape 3, puis remplacée par son code.
+| Action | Statut de départ | Effet |
+|---|---|---|
+| Nouvelle ordonnance | — | brouillon daté du jour, valable 90 jours, numéro ORD-AAAA-NNNN |
+| Ajouter / modifier une ligne | brouillon | contrôles (dose max, 1 à 6 prises, 1 à 365 jours, DCI en double, APCI), boîtes calculées |
+| Valider | brouillon | contrôles bloquants + avertissements (chevauchement, gestion Patients), signature SHA-256, planning des prises, verrouillage |
+| Annuler | validée, partiellement délivrée | motif ≥ 10 caractères, reste dans l'historique |
+| Corriger | validée, partiellement délivrée | annulation + copie en brouillon (`ordonnance_origine_id`) |
+| Renouveler | délivrée, partiellement délivrée, expirée (renouvellements > 0) | copie validée du jour ; le compteur décrémenté passe sur la copie |
+
+## Gestion Patients (Abir) — `domain/service_patients.dart`
+
+| Fonction | Version provisoire actuelle |
+|---|---|
+| `analyserTraitement(patient, dci, autresDci)` | aucun risque (jamais bloquant) |
+| `codesCimChroniques(patient)` | codes APCI des contrats du patient |
+| `patientsDuMedecin(medecin)` | patients dont il est le médecin référent |
+
+Pour brancher la vraie version : `ServicePatients.instance = SaVersion();` (une ligne).
 
 ## Tests
 
