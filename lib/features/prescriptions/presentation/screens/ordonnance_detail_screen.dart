@@ -19,6 +19,7 @@ import '../widgets/apci_patient_sheet.dart';
 import '../widgets/detail_prise_en_charge.dart';
 import '../widgets/dialogues_ordonnance.dart';
 import '../widgets/elements_ui.dart';
+import 'apci_formulaire_screen.dart';
 import 'dossier_detail_screen.dart';
 import 'ligne_form_screen.dart';
 import 'ordonnance_pdf_screen.dart';
@@ -408,6 +409,23 @@ class _OrdonnanceDetailScreenState extends State<OrdonnanceDetailScreen> {
                 if (modifie && mounted) {
                   _message('APCI du patient mise à jour');
                 }
+              },
+            ),
+          // Formulaire APCI CNAM imprimable (médecin uniquement).
+          if (!widget.lectureSeule)
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf_rounded),
+              tooltip: 'Formulaire APCI CNAM (PDF)',
+              onPressed: () {
+                Navigator.push<void>(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => ApciFormulaireScreen(
+                      patientId: o.patientId,
+                      medecinId: o.medecinId,
+                    ),
+                  ),
+                );
               },
             ),
           if (!o.estModifiable)

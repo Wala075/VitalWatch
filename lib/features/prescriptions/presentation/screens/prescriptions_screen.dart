@@ -5,6 +5,8 @@ import '../../../../models/utilisateur.dart';
 import '../../../../shared_providers/session.dart';
 import '../../domain/prescriptions_permissions.dart';
 import '../widgets/ui_commun.dart';
+import 'tabs/apci_cnam_tab.dart';
+import 'tabs/apci_formulaire_tab.dart';
 import 'tabs/apci_tab.dart';
 import 'tabs/assurances_tab.dart';
 import 'tabs/aujourdhui_tab.dart';
@@ -67,6 +69,10 @@ class _PrescriptionsScreenState extends State<PrescriptionsScreen> {
         (Key k) => MesOrdonnancesTab(key: k, patientId: refId),
       ));
       onglets.add(_Onglet(
+        const NavItem(Icons.favorite_rounded, 'Mon APCI & CNAM'),
+        (Key k) => ApciCnamTab(key: k, patientId: refId),
+      ));
+      onglets.add(_Onglet(
         const NavItem(Icons.receipt_long_rounded, 'Remboursements'),
         (Key k) => RemboursementsTab(key: k, patientId: refId),
       ));
@@ -93,7 +99,14 @@ class _PrescriptionsScreenState extends State<PrescriptionsScreen> {
       if (role.voirApci) {
         onglets.add(_Onglet(
           const NavItem(Icons.favorite_rounded, 'APCI'),
-          (Key k) => ApciTab(key: k, role: role),
+          (Key k) => ApciTab(key: k, role: role, medecinId: refId),
+        ));
+      }
+      // Onglet formulaire APCI : médecin uniquement.
+      if (role.gererApci && refId != null) {
+        onglets.add(_Onglet(
+          const NavItem(Icons.assignment_rounded, 'Formulaire APCI'),
+          (Key k) => ApciFormulaireTab(key: k, medecinId: refId),
         ));
       }
       if (role.voirPatients && !role.gererReferentiels) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../../core/services/app_database.dart';
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../core/widgets/empty_state.dart';
 import '../../../../../core/widgets/search_field.dart';
@@ -10,14 +11,18 @@ import '../../../domain/prescriptions_permissions.dart';
 import '../../widgets/apci_dialog.dart';
 import '../../widgets/elements_ui.dart';
 import '../apci_detail_screen.dart';
+import '../apci_formulaire_screen.dart';
 
 /// APCI : maladies (code CIM-10) prises en charge à 100 %.
 /// Le médecin tient la liste des maladies ; le pharmacien, les médicaments
 /// couverts par chacune.
 class ApciTab extends StatefulWidget {
-  const ApciTab({super.key, required this.role});
+  const ApciTab({super.key, required this.role, this.medecinId});
 
   final Role role;
+
+  /// medecins.id du compte connecté (null pour le pharmacien).
+  final int? medecinId;
 
   @override
   State<ApciTab> createState() => _ApciTabState();
@@ -67,6 +72,16 @@ class _ApciTabState extends State<ApciTab> {
     _charger();
   }
 
+  /// Le médecin choisit un de ses patients pour générer le formulaire PDF.
+  Future<void> _choisirPatientPourFormulaire(int medecinId) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => _ChoixPatientFormulaire(medecinId: medecinId),
+      ),
+    );
+  }
+
   String _sousTitre(Apci a) {
     final int n = _nbDci[a.codeCim10] ?? 0;
     if (n == 0) {
@@ -78,6 +93,7 @@ class _ApciTabState extends State<ApciTab> {
   @override
   Widget build(BuildContext context) {
     final bool gererCodes = widget.role.gererApci;
+    final int? medecinId = widget.medecinId;
 
     return SafeArea(
       bottom: false,
@@ -90,6 +106,28 @@ class _ApciTabState extends State<ApciTab> {
                 ? BoutonAjout(tooltip: 'Ajouter une maladie', onPressed: _ajouter)
                 : null,
           ),
+          // Bandeau raccourci formulaire CNAM (médecin uniquement).
+          if (gererCodes && medecinId != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Card(
+                margin: EdgeInsets.zero,
+                color: const Color(0xFFE8F5E9),
+                child: ListTile(
+                  leading: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFF006837)),
+                  title: const Text(
+                    'Formulaire APCI CNAM',
+                    style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF006837)),
+                  ),
+                  subtitle: const Text(
+                    'Sélectionnez un patient pour générer le PDF',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF006837)),
+                  onTap: () => _choisirPatientPourFormulaire(medecinId),
+                ),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: SearchField(
@@ -163,6 +201,112 @@ class _ApciTabState extends State<ApciTab> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ============================================================================
+// Écran de sélection du patient pour le formulaire APCI CNAM
+// ============================================================================
+
+class _ChoixPatientFormulaire extends StatefulWidget {
+  const _ChoixPatientFormulaire({required this.medecinId});
+
+  final int medecinId;
+
+  @override
+  State<_ChoixPatientFormulaire> createState() =>
+      _ChoixPatientFormulaireState();
+}
+
+class _ChoixPatientFormulaireState extends State<_ChoixPatientFormulaire> {
+  List<Map<String, Object?>> _patients = [];
+  bool _chargement = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    final db = await AppDatabase.instance.database;
+    final List<Map<String, Object?>> rows = await db.query(
+      'patients',
+      where: 'medecin_id = ?',
+      whereArgs: [widget.medecinId],
+      orderBy: 'nom COLLATE NOCASE',
+    );
+    if (!mounted) return;
+    setState(() {
+      _patients = rows;
+      _chargement = false;
+    });
+  }
+
+  void _ouvrir(Map<String, Object?> row) {
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => ApciFormulaireScreen(
+          patientId: row['id'] as int,
+          medecinId: widget.medecinId,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Choisir un patient')),
+      body: _chargement
+          ? const Center(child: CircularProgressIndicator())
+          : _patients.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'Aucun patient affecté à ce médecin.',
+                      style: TextStyle(color: AppColors.textSecondary),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _patients.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (BuildContext context, int i) {
+                    final Map<String, Object?> p = _patients[i];
+                    final String nom =
+                        '${p['prenom'] ?? ''} ${p['nom'] ?? ''}'.trim();
+                    final String cin = (p['cin'] as String?) ?? '';
+                    return Card(
+                      margin: EdgeInsets.zero,
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor:
+                              AppColors.primary.withValues(alpha: 0.1),
+                          child: const Icon(
+                            Icons.person_rounded,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        title: Text(
+                          nom,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text('CIN $cin'),
+                        trailing: const Icon(
+                          Icons.picture_as_pdf_rounded,
+                          color: Color(0xFF006837),
+                        ),
+                        onTap: () => _ouvrir(p),
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }
