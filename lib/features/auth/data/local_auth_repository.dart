@@ -1,4 +1,5 @@
 import '../../../core/config/email_config.dart';
+import '../../../core/config/turnstile_config.dart';
 import '../../../core/services/app_database.dart';
 import '../../../core/services/email_service.dart';
 import '../../../core/utils/password_hasher.dart';
@@ -73,6 +74,9 @@ class LocalAuthRepository implements AuthRepository {
 
   /// Vérification du jeton par l'API Cloudflare Turnstile.
   Future<void> _verifierCaptcha(String? jeton) async {
+    if (!TurnstileConfig.actif) {
+      return;
+    }
     final String j = jeton ?? '';
     if (j.isEmpty) {
       throw const AuthException(

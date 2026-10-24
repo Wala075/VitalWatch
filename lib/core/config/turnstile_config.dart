@@ -27,6 +27,11 @@ class TurnstileConfig {
 
   static bool get modeTest => cleSite == cleSiteTest;
 
+  /// Captcha exigé (connexion, mot de passe oublié). Mis à false uniquement
+  /// dans les tests (`flutter test` n'a pas de WebView pour afficher le
+  /// widget Cloudflare).
+  static bool actif = true;
+
   /// À appeler une fois dans main() avant runApp().
   static Future<void> charger() async {
     try {

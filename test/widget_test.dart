@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:projet/core/config/turnstile_config.dart';
 import 'package:projet/core/theme/app_theme.dart';
 import 'package:projet/features/auth/presentation/screens/login_screen.dart';
 
 Widget _app() => MaterialApp(theme: AppTheme.light, home: const LoginScreen());
 
 void main() {
+  // Pas de WebView dans flutter test : captcha Cloudflare désactivé.
+  TurnstileConfig.actif = false;
+
   testWidgets('La page de connexion s\'affiche', (WidgetTester tester) async {
     await tester.pumpWidget(_app());
 

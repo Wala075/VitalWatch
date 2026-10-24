@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/config/turnstile_config.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/validators.dart';
@@ -34,7 +35,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _jetonCaptcha;
   int _captchaVersion = 0;
 
-  bool get _attenteCaptcha => _jetonCaptcha == null;
+  bool get _attenteCaptcha => TurnstileConfig.actif && _jetonCaptcha == null;
 
   @override
   void dispose() {
@@ -302,6 +303,8 @@ class _FeuilleReinitialisationState extends State<_FeuilleReinitialisation> {
     }
   }
 
+  bool get _attenteCaptcha => TurnstileConfig.actif && _jeton == null;
+
   @override
   Widget build(BuildContext context) {
     final String? erreur = _erreur;
@@ -343,10 +346,10 @@ class _FeuilleReinitialisationState extends State<_FeuilleReinitialisation> {
             const SizedBox(height: 16),
           ],
           PrimaryButton(
-            label: _jeton == null ? "Cochez d'abord le captcha" : 'Envoyer',
+            label: _attenteCaptcha ? "Cochez d'abord le captcha" : 'Envoyer',
             icon: Icons.send_rounded,
             loading: _envoi,
-            onPressed: _jeton == null ? null : _envoyer,
+            onPressed: _attenteCaptcha ? null : _envoyer,
           ),
         ],
       ),
