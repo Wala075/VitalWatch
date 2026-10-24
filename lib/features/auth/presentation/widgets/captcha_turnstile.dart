@@ -19,6 +19,9 @@ class CaptchaTurnstile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!TurnstileConfig.actif) {
+      return const SizedBox.shrink();
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
