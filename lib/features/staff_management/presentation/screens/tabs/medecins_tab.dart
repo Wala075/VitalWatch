@@ -7,6 +7,7 @@ import '../../../../../core/widgets/search_field.dart';
 import '../../../../../models/medecin.dart';
 import '../../../../../models/service.dart';
 import '../../../../../models/utilisateur.dart';
+import '../../../data/conge_repository.dart';
 import '../../../data/horaire_repository.dart';
 import '../../../data/medecin_repository.dart';
 import '../../../data/service_repository.dart';
@@ -44,6 +45,7 @@ class _MedecinsListeState extends State<MedecinsListe> {
 
   List<MedecinDetail> _medecins = [];
   Map<int, List<Creneau>> _horaires = {};
+  Map<int, DateTime> _conges = {};
   MedecinFiltre _filtre = const MedecinFiltre();
 
   /// Filtre rapide sur l'état (null = tous).
@@ -61,10 +63,13 @@ class _MedecinsListeState extends State<MedecinsListe> {
     final int requete = ++_requete;
     final List<MedecinDetail> res = await _repo.rechercher(_filtre);
     final Map<int, List<Creneau>> horaires = await _horaireRepo.tous();
+    final Map<int, DateTime> conges =
+        await CongeRepository().enCongeAujourdhui(Role.medecin);
     if (!mounted || requete != _requete) return;
     setState(() {
       _medecins = res;
       _horaires = horaires;
+      _conges = conges;
       _chargement = false;
     });
   }
@@ -107,6 +112,7 @@ class _MedecinsListeState extends State<MedecinsListe> {
             d.medecin,
             _horaires[d.medecin.id] ?? const [],
             maintenant,
+            congeJusquau: _conges[d.medecin.id],
           ),
         ),
     ]..sort((a, b) => a.disponibilite.etat.index.compareTo(b.disponibilite.etat.index));

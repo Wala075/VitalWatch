@@ -12,7 +12,10 @@ import '../../../../core/widgets/primary_button.dart';
 import '../../../../models/patient.dart';
 import '../../../../models/service.dart';
 import '../../data/medecin_repository.dart';
+import '../../data/patient_repository.dart';
+import '../../data/scan_cin_service.dart';
 import '../../data/service_repository.dart';
+import '../../domain/lecture_cin.dart';
 import '../../domain/staff_manager.dart';
 import '../../domain/staff_models.dart';
 import '../widgets/compte_cree_dialog.dart';
@@ -43,6 +46,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   final StaffManager _manager = StaffManager();
   final ServiceRepository _serviceRepo = ServiceRepository();
   final MedecinRepository _medecinRepo = MedecinRepository();
+  final PatientRepository _patientRepo = PatientRepository();
 
   List<Service> _services = [];
   List<MedecinDetail> _medecinsService = [];
@@ -52,6 +56,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   int? _serviceId;
   int? _medecinId;
   bool _enregistrement = false;
+  bool _scanEnCours = false;
   String? _erreur;
 
   bool get _edition => widget.patient != null;
@@ -141,12 +146,222 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     });
   }
 
-  void _scannerCin() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Scan de la CIN (Google ML Kit) : disponible à l\'étape 2'),
+  /// API Google ML Kit : photo de la CIN (ou du passeport) → champs remplis.
+  /// Métier : une CIN déjà enregistrée est signalée avant toute saisie.
+  Future<void> _scannerCin() async {
+    final ScaffoldMessengerState messages = ScaffoldMessenger.of(context);
+    if (!ScanCinService.disponible) {
+      messages.showSnackBar(
+        const SnackBar(content: Text('Le scan fonctionne sur téléphone (Android ou iOS)')),
+      );
+      return;
+    }
+    final SourcePhoto? source = await showModalBottomSheet<SourcePhoto>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Prendre une photo'),
+              onTap: () => Navigator.pop(ctx, SourcePhoto.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choisir dans la galerie'),
+              onTap: () => Navigator.pop(ctx, SourcePhoto.galerie),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
+    if (source == null || !mounted) return;
+
+    setState(() => _scanEnCours = true);
+    ResultatScan? lu;
+    try {
+      lu = await ScanCinService().scanner(source);
+    } catch (_) {
+      messages.showSnackBar(
+        const SnackBar(content: Text('Lecture impossible : reprenez une photo nette, sans reflet')),
+      );
+    } finally {
+      if (mounted) setState(() => _scanEnCours = false);
+    }
+    final ResultatScan? r = lu;
+    if (r == null || !mounted) return;
+    if (r.vide) {
+      messages.showSnackBar(
+        SnackBar(
+          content: Text(
+            r.avertissement ?? 'Rien de reconnu : cadrez toute la carte, bien éclairée',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final String? cin = r.cin;
+    if (cin != null) {
+      final Patient? existant = await _patientRepo.parCin(cin);
+      if (!mounted) return;
+      if (existant != null) {
+        await showDialog<void>(
+          context: context,
+          builder: (BuildContext ctx) => AlertDialog(
+            icon: const Icon(Icons.person_search_rounded, color: AppColors.warning),
+            title: const Text('Patient déjà enregistré'),
+            content: Text(
+              'La CIN $cin appartient à ${existant.nomComplet}, '
+              'né(e) le ${Formatters.date(existant.dateNaissance)}.\n\n'
+              'Inutile de créer un nouveau dossier.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Compris'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+
+    // Lecture complète (Gemini) : l'utilisateur vérifie la translittération.
+    if (r.viaGemini) {
+      final bool ok = await _confirmerLecture(r);
+      if (!ok || !mounted) return;
+    }
+
+    final List<String> remplis = [];
+    final String? nom = r.nom;
+    final String? prenom = r.prenom;
+    final DateTime? naissance = r.dateNaissance;
+    final String? sexe = r.sexe;
+    final String? adresse = r.adresse;
+    setState(() {
+      if (cin != null) {
+        _cinCtrl.text = cin;
+        remplis.add('CIN');
+      }
+      if (nom != null) {
+        _nomCtrl.text = nom;
+        remplis.add('nom');
+      }
+      if (prenom != null) {
+        _prenomCtrl.text = prenom;
+        remplis.add('prénom');
+      }
+      if (naissance != null) {
+        _dateNaissance = naissance;
+        _dateCtrl.text = Formatters.date(naissance);
+        remplis.add('date de naissance');
+      }
+      if (sexe != null) {
+        _sexe = sexe;
+        remplis.add('sexe');
+      }
+      if (adresse != null && _adresseCtrl.text.trim().isEmpty) {
+        _adresseCtrl.text = adresse;
+        remplis.add('adresse');
+      }
+    });
+    final String? avertissement = r.avertissement;
+    messages.showSnackBar(
+      SnackBar(
+        content: Text(
+          '${avertissement == null ? '' : '$avertissement\n'}'
+          'Rempli automatiquement : ${remplis.join(', ')}. '
+          'Vérifiez puis complétez le reste.',
+        ),
+      ),
+    );
+  }
+
+  /// Données lues par Gemini, en français (et en arabe pour vérifier).
+  Future<bool> _confirmerLecture(ResultatScan r) async {
+    final DateTime? naissance = r.dateNaissance;
+    final List<(String, String?, String?)> lignes = [
+      ('CIN', r.cin, null),
+      ('Nom', r.nom, r.nomArabe),
+      ('Prénom', r.prenom, r.prenomArabe),
+      (r.sexe == 'F' ? 'Fille de' : 'Fils de', r.pere, null),
+      ('Né(e) le', naissance == null ? null : Formatters.date(naissance), null),
+      ('Lieu de naissance', r.lieuNaissance, null),
+      ('Adresse', r.adresse, null),
+    ];
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        icon: const Icon(Icons.translate_rounded, color: AppColors.primary),
+        title: const Text('Données lues sur la CIN'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final l in lignes)
+                if (l.$2 != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 104,
+                          child: Text(
+                            l.$1,
+                            style: const TextStyle(color: AppColors.textSecondary),
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                l.$2 ?? '',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              if (l.$3 != null)
+                                Text(
+                                  l.$3 ?? '',
+                                  textDirection: TextDirection.rtl,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              const Text(
+                "Translittération automatique (Gemini) : vérifiez l'orthographe "
+                'avant d\'enregistrer.',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remplir le formulaire'),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
   }
 
   String? _texteOuNull(TextEditingController c) {
@@ -262,9 +477,19 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
           children: [
             if (!_edition) ...[
               OutlinedButton.icon(
-                onPressed: _scannerCin,
-                icon: const Icon(Icons.document_scanner_outlined),
-                label: const Text('Scanner la CIN pour pré-remplir'),
+                onPressed: _scanEnCours ? null : _scannerCin,
+                icon: _scanEnCours
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.document_scanner_outlined),
+                label: Text(
+                  _scanEnCours
+                      ? 'Lecture de la pièce…'
+                      : 'Scanner la CIN ou le passeport',
+                ),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                   shape: RoundedRectangleBorder(

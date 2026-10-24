@@ -6,6 +6,7 @@ import '../../../../../core/widgets/empty_state.dart';
 import '../../../../../core/widgets/search_field.dart';
 import '../../../../../models/infirmier.dart';
 import '../../../../../models/utilisateur.dart';
+import '../../../data/conge_repository.dart';
 import '../../../data/infirmier_repository.dart';
 import '../../../domain/staff_models.dart';
 import '../../widgets/avatar_initiales.dart';
@@ -28,6 +29,9 @@ class _InfirmiersListeState extends State<InfirmiersListe> {
   final InfirmierRepository _repo = InfirmierRepository();
 
   List<InfirmierDetail> _liste = [];
+
+  /// Infirmiers en congé validé aujourd'hui → dernier jour.
+  Map<int, DateTime> _conges = {};
   String _texte = '';
 
   /// Filtre rapide : null = tous, true = disponibles, false = en congé.
@@ -44,9 +48,12 @@ class _InfirmiersListeState extends State<InfirmiersListe> {
   Future<void> _charger() async {
     final int requete = ++_requete;
     final List<InfirmierDetail> res = await _repo.rechercher(texte: _texte);
+    final Map<int, DateTime> conges =
+        await CongeRepository().enCongeAujourdhui(Role.infirmier);
     if (!mounted || requete != _requete) return;
     setState(() {
       _liste = res;
+      _conges = conges;
       _chargement = false;
     });
   }
@@ -62,10 +69,12 @@ class _InfirmiersListeState extends State<InfirmiersListe> {
   @override
   Widget build(BuildContext context) {
     final bool gerer = widget.role.gererPersonnel;
-    final int nbDispo = _liste.where((d) => d.infirmier.disponible).length;
+    bool present(InfirmierDetail d) =>
+        d.infirmier.disponible && !_conges.containsKey(d.infirmier.id);
+    final int nbDispo = _liste.where(present).length;
     final List<InfirmierDetail> visibles = _disponible == null
         ? _liste
-        : _liste.where((d) => d.infirmier.disponible == _disponible).toList();
+        : _liste.where((d) => present(d) == _disponible).toList();
 
     return Column(
       children: [
@@ -131,6 +140,7 @@ class _InfirmiersListeState extends State<InfirmiersListe> {
                           final InfirmierDetail d = visibles[i];
                           return _CarteInfirmier(
                             detail: d,
+                            congeJusquau: _conges[d.infirmier.id],
                             onTap: gerer ? () => _ouvrir(d.infirmier) : null,
                           );
                         },
@@ -143,9 +153,10 @@ class _InfirmiersListeState extends State<InfirmiersListe> {
 }
 
 class _CarteInfirmier extends StatelessWidget {
-  const _CarteInfirmier({required this.detail, this.onTap});
+  const _CarteInfirmier({required this.detail, this.congeJusquau, this.onTap});
 
   final InfirmierDetail detail;
+  final DateTime? congeJusquau;
   final VoidCallback? onTap;
 
   @override
@@ -199,7 +210,14 @@ class _CarteInfirmier extends StatelessWidget {
                       runSpacing: 6,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        if (i.disponible)
+                        if (congeJusquau case final DateTime fin)
+                          StatusBadge(
+                            libelle: "En congé jusqu'au ${fin.day.toString().padLeft(2, '0')}/"
+                                "${fin.month.toString().padLeft(2, '0')}",
+                            icon: Icons.event_busy_rounded,
+                            couleur: AppColors.danger,
+                          )
+                        else if (i.disponible)
                           const StatusBadge(
                             libelle: 'Disponible',
                             icon: Icons.check_circle_rounded,

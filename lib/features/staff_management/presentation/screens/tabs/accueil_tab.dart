@@ -7,6 +7,7 @@ import '../../../../../models/medecin.dart';
 import '../../../../../models/patient.dart';
 import '../../../../../models/utilisateur.dart';
 import '../../../../../shared_providers/session.dart';
+import '../../../data/conge_repository.dart';
 import '../../../data/horaire_repository.dart';
 import '../../../data/medecin_repository.dart';
 import '../../../data/patient_repository.dart';
@@ -17,6 +18,7 @@ import '../../../domain/staff_models.dart';
 import '../../widgets/avatar_initiales.dart';
 import '../../widgets/badges_sante.dart';
 import '../../widgets/profil_sheet.dart';
+import '../conges_screen.dart';
 import '../medecin_detail_screen.dart';
 import '../patient_sante_screen.dart';
 
@@ -52,6 +54,12 @@ class _AccueilTabState extends State<AccueilTab> {
   Map<int, List<Creneau>> _horaires = {};
   List<PatientDetail> _patients = [];
   List<ServiceStats> _services = [];
+  Map<int, DateTime> _conges = {};
+  int _congesEnAttente = 0;
+
+  bool get _afficherConges =>
+      widget.role.validerConges ||
+      (widget.role.demanderConges && Session.utilisateur?.refId != null);
 
   @override
   void initState() {
@@ -66,14 +74,28 @@ class _AccueilTabState extends State<AccueilTab> {
     final List<PatientDetail> patients =
         await PatientRepository().rechercher(const PatientFiltre());
     final List<ServiceStats> services = await ServiceRepository().statistiques();
+    final CongeRepository congeRepo = CongeRepository();
+    final Map<int, DateTime> conges = await congeRepo.enCongeAujourdhui(Role.medecin);
+    final int enAttente =
+        widget.role.validerConges ? await congeRepo.compterEnAttente() : 0;
     if (!mounted) return;
     setState(() {
       _medecins = medecins;
       _horaires = horaires;
       _patients = patients;
       _services = services;
+      _conges = conges;
+      _congesEnAttente = enAttente;
       _chargement = false;
     });
+  }
+
+  Future<void> _ouvrirConges() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => CongesScreen(role: widget.role)),
+    );
+    if (mounted) _charger();
   }
 
   Future<void> _ouvrirMedecin(Medecin m) async {
@@ -120,6 +142,7 @@ class _AccueilTabState extends State<AccueilTab> {
         d.medecin,
         _horaires[d.medecin.id] ?? const [],
         maintenant,
+        congeJusquau: _conges[d.medecin.id],
       );
       if (dispo.etat == EtatMedecin.enService) {
         enService.add(_MedecinEnService(d, dispo));
@@ -192,6 +215,14 @@ class _AccueilTabState extends State<AccueilTab> {
                 ),
               ],
             ),
+            if (_afficherConges) ...[
+              const SizedBox(height: 12),
+              _CarteConges(
+                admin: widget.role.validerConges,
+                enAttente: _congesEnAttente,
+                onTap: _ouvrirConges,
+              ),
+            ],
             const SizedBox(height: 26),
             SectionHeader(
               titre: 'En service maintenant',
@@ -606,6 +637,92 @@ class _Vide extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Accès aux congés : « Demandes de congé » (admin) ou « Mes congés ».
+class _CarteConges extends StatelessWidget {
+  const _CarteConges({
+    required this.admin,
+    required this.enAttente,
+    required this.onTap,
+  });
+
+  final bool admin;
+  final int enAttente;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final String sousTitre = admin
+        ? (enAttente == 0
+            ? 'Aucune demande à traiter'
+            : '$enAttente demande(s) à traiter')
+        : 'Demander un congé, suivre mes demandes';
+
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.purple.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.event_note_rounded, color: AppColors.purple),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      admin ? 'Demandes de congé' : 'Mes congés',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      sousTitre,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (admin && enAttente > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.danger,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$enAttente',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+            ],
+          ),
+        ),
       ),
     );
   }

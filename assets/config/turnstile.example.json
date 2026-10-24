@@ -1,0 +1,5 @@
+{
+  "TURNSTILE_SITE_KEY": "",
+  "TURNSTILE_SECRET_KEY": "",
+  "TURNSTILE_BASE_URL": "http://localhost/"
+}

@@ -41,6 +41,11 @@ dependencies:
   crypto: ^3.0.6
   # Envoi des identifiants par mail (API REST EmailJS)
   http: ^1.6.0
+  # Scan de la CIN : photo + reconnaissance de texte (API Google ML Kit)
+  image_picker: ^1.2.4
+  google_mlkit_text_recognition: ^0.17.1
+  # Captcha de connexion (API Cloudflare Turnstile)
+  cloudflare_turnstile: ^3.8.1
 
   # Module 3 : Ambulances & Interventions
   # Carte OpenStreetMap, coordonnées GPS, position de l'appareil

@@ -13,6 +13,7 @@ import '../../../models/service.dart';
 import '../../../models/utilisateur.dart';
 import '../data/ambulancier_repository.dart';
 import '../data/compte_repository.dart';
+import '../data/conge_repository.dart';
 import '../data/horaire_repository.dart';
 import '../data/infirmier_repository.dart';
 import '../data/medecin_repository.dart';
@@ -42,6 +43,7 @@ class StaffManager {
   final CompteRepository _comptes;
   final EmailService _email;
   final HoraireRepository _horaires = HoraireRepository();
+  final CongeRepository _conges = CongeRepository();
   final InfirmierRepository _infirmiers = InfirmierRepository();
   final AmbulancierRepository _ambulanciers = AmbulancierRepository();
   final PharmacienRepository _pharmaciens = PharmacienRepository();
@@ -159,6 +161,7 @@ class StaffManager {
     await db.transaction((Transaction txn) async {
       await _services.retirerChef(id, exec: txn);
       await _comptes.supprimer(role: Role.medecin, refId: id, exec: txn);
+      await _conges.supprimerDe(Role.medecin, id, exec: txn);
       await _medecins.supprimer(id, exec: txn);
     });
     return n;
@@ -379,6 +382,7 @@ class StaffManager {
     final Database db = await _db;
     await db.transaction((Transaction txn) async {
       await _comptes.supprimer(role: Role.infirmier, refId: id, exec: txn);
+      await _conges.supprimerDe(Role.infirmier, id, exec: txn);
       await _infirmiers.supprimer(id, exec: txn);
     });
   }

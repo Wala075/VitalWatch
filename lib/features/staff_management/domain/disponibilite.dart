@@ -82,7 +82,8 @@ class Disponibilite {
 
   final EtatMedecin etat;
 
-  /// Fin du créneau en cours (si en service).
+  /// Fin du créneau en cours (si en service) ou dernier jour du congé
+  /// (si absent pour un congé validé).
   final DateTime? jusqua;
 
   /// Début du prochain créneau (si hors horaires).
@@ -91,7 +92,11 @@ class Disponibilite {
   String libelle(DateTime maintenant) {
     switch (etat) {
       case EtatMedecin.absent:
-        return 'En congé';
+        final DateTime? retour = jusqua;
+        return retour == null
+            ? 'En congé'
+            : "En congé jusqu'au ${retour.day.toString().padLeft(2, '0')}/"
+                "${retour.month.toString().padLeft(2, '0')}";
       case EtatMedecin.enService:
         final DateTime? fin = jusqua;
         return fin == null ? 'En service' : "En service jusqu'à ${_heure(fin)}";
@@ -121,10 +126,14 @@ class Disponibilite {
   static Disponibilite calculer(
     Medecin medecin,
     List<Creneau> creneaux,
-    DateTime maintenant,
-  ) {
+    DateTime maintenant, {
+    DateTime? congeJusquau,
+  }) {
     if (!medecin.disponible) {
       return const Disponibilite(EtatMedecin.absent);
+    }
+    if (congeJusquau != null) {
+      return Disponibilite(EtatMedecin.absent, jusqua: congeJusquau);
     }
     final int minute = maintenant.hour * 60 + maintenant.minute;
 

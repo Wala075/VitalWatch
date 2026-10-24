@@ -28,6 +28,10 @@
 	<string>VitalWatch utilise votre position pour envoyer une ambulance (SOS) et suivre les interventions.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>VitalWatch écoute « help » ou « au secours » pour envoyer une ambulance.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>VitalWatch utilise l'appareil photo pour scanner la carte d'identité d'un patient.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>VitalWatch lit une photo de la carte d'identité pour remplir le dossier du patient.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>VitalWatch reconnaît les appels à l'aide prononcés pour envoyer une ambulance.</string>
 	<key>LSRequiresIPhoneOS</key>

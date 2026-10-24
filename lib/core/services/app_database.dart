@@ -13,7 +13,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const String _fichier = 'vitalwatch.db';
-  static const int _version = 4;
+  static const int _version = 5;
 
   Future<Database>? _ouverture;
 
@@ -92,10 +92,12 @@ class AppDatabase {
     await _creerTableHoraires(db);
     await _creerTablesPersonnel(db);
     await _creerTablePharmaciens(db);
+    await _creerTableConges(db);
 
     await _donneesDemo(db);
     await _donneesPersonnel(db);
     await _donneesPharmaciens(db);
+    await _donneesConges(db);
   }
 
   /// Migration des bases déjà installées (version 1 → 2).
@@ -120,6 +122,10 @@ class AppDatabase {
     if (ancienne < 4) {
       await _creerTablePharmaciens(db);
       await _donneesPharmaciens(db);
+    }
+    if (ancienne < 5) {
+      await _creerTableConges(db);
+      await _donneesConges(db);
     }
   }
 
@@ -304,6 +310,99 @@ class AppDatabase {
       where: 'email = ? AND role = ? AND ref_id IS NULL',
       whereArgs: ['pharmacien@vitalwatch.tn', Role.pharmacien.name],
     );
+    await b.commit(noResult: true);
+  }
+
+  // ===== Module 1 : demandes de congé (version 5) =====
+  // demandeur_role = 'medecin' ou 'infirmier', demandeur_id = son id.
+  // Dates au format AAAA-MM-JJ, fin incluse.
+  Future<void> _creerTableConges(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS conges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        demandeur_role TEXT NOT NULL,
+        demandeur_id INTEGER NOT NULL,
+        date_debut TEXT NOT NULL,
+        date_fin TEXT NOT NULL,
+        type TEXT NOT NULL,
+        motif TEXT NOT NULL DEFAULT '',
+        statut TEXT NOT NULL DEFAULT 'en_attente',
+        commentaire TEXT,
+        cree_le TEXT NOT NULL,
+        decide_le TEXT
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_conges_demandeur ON conges(demandeur_role, demandeur_id)',
+    );
+  }
+
+  /// Démo : une 2e infirmière en Cardiologie (avec un seul infirmier par
+  /// service, toute demande d'infirmier serait refusée) et 4 demandes.
+  Future<void> _donneesConges(Database db) async {
+    const ConflictAlgorithm ignorer = ConflictAlgorithm.ignore;
+    final bool cardiologie =
+        (await db.query('services', columns: ['id'], where: 'id = 1')).isNotEmpty;
+    await db.insert(
+      'infirmiers',
+      {'id': 4, 'nom': 'Chaabane', 'prenom': 'Ines', 'matricule': 'INF-2004', 'telephone': '+21629876543', 'email': 'ines.chaabane@vitalwatch.tn', 'service_id': cardiologie ? 1 : null, 'disponible': 1},
+      conflictAlgorithm: ignorer,
+    );
+    final bool ines = (await db.query(
+      'infirmiers',
+      columns: ['id'],
+      where: 'id = 4 AND email = ?',
+      whereArgs: ['ines.chaabane@vitalwatch.tn'],
+    )).isNotEmpty;
+    if (ines) {
+      await db.insert(
+        'utilisateurs',
+        _compte('ines.chaabane@vitalwatch.tn', 'infirmier123', Role.infirmier, 4, 'Chaabane', 'Ines'),
+        conflictAlgorithm: ignorer,
+      );
+    }
+
+    final int nb =
+        Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM conges')) ?? 0;
+    if (nb > 0) return;
+    final Set<int> medecins = {
+      for (final Map<String, Object?> r in await db.query('medecins', columns: ['id']))
+        r['id'] as int,
+    };
+    final Set<int> infirmiers = {
+      for (final Map<String, Object?> r in await db.query('infirmiers', columns: ['id']))
+        r['id'] as int,
+    };
+    final DateTime auj = DateTime.now();
+    String jour(int n) {
+      final DateTime d = DateTime(auj.year, auj.month, auj.day + n);
+      return '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-'
+          '${d.day.toString().padLeft(2, '0')}';
+    }
+
+    final Batch b = db.batch();
+    void conge(String role, int id, int du, int au, String type, String motif, String statut) {
+      b.insert('conges', {
+        'demandeur_role': role,
+        'demandeur_id': id,
+        'date_debut': jour(du),
+        'date_fin': jour(au),
+        'type': type,
+        'motif': motif,
+        'statut': statut,
+        'cree_le': auj.toIso8601String(),
+        'decide_le': statut == 'en_attente' ? null : auj.toIso8601String(),
+      });
+    }
+
+    // Leila Gharbi (Cardiologie) : congé validé.
+    if (medecins.contains(2)) conge('medecin', 2, 20, 26, 'annuel', 'Vacances', 'validee');
+    // Amine Ben Salah (Cardiologie) : en attente, validable (Leila présente).
+    if (medecins.contains(1)) conge('medecin', 1, 35, 39, 'annuel', 'Voyage en famille', 'en_attente');
+    // Karim Jaziri, seul médecin des Urgences : sera refusé automatiquement.
+    if (medecins.contains(3)) conge('medecin', 3, 10, 12, 'formation', "Congrès de médecine d'urgence", 'en_attente');
+    // Rim Saidi (Cardiologie) : validable (Ines présente).
+    if (infirmiers.contains(1)) conge('infirmier', 1, 15, 16, 'annuel', 'Démarches administratives', 'en_attente');
     await b.commit(noResult: true);
   }
 

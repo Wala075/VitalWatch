@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/services/app_database.dart';
 import '../../../models/medecin.dart';
+import '../domain/conges.dart';
 import '../domain/staff_models.dart';
 
 class MedecinRepository {
@@ -75,18 +76,36 @@ class MedecinRepository {
     return rows.isNotEmpty;
   }
 
-  /// Médecin disponible du service ayant le moins de patients.
-  Future<int?> moinsCharge(int serviceId, {int? exclureId}) async {
+  /// Médecin disponible du service ayant le moins de patients, et sans
+  /// congé validé sur la période [du]–[au] (aujourd'hui par défaut).
+  Future<int?> moinsCharge(
+    int serviceId, {
+    int? exclureId,
+    DateTime? du,
+    DateTime? au,
+  }) async {
     final Database db = await _db;
+    final DateTime debut = du ?? DateTime.now();
     final List<Map<String, Object?>> rows = await db.rawQuery('''
       SELECT m.id, COUNT(p.id) AS charge
       FROM medecins m
       LEFT JOIN patients p ON p.medecin_id = m.id
       WHERE m.service_id = ? AND m.disponible = 1 AND m.id != ?
+        AND NOT EXISTS (
+          SELECT 1 FROM conges c
+          WHERE c.demandeur_role = 'medecin' AND c.demandeur_id = m.id
+            AND c.statut = 'validee'
+            AND c.date_debut <= ? AND c.date_fin >= ?
+        )
       GROUP BY m.id
       ORDER BY charge ASC, m.id ASC
       LIMIT 1
-    ''', [serviceId, exclureId ?? -1]);
+    ''', [
+      serviceId,
+      exclureId ?? -1,
+      RegleConges.iso(au ?? debut),
+      RegleConges.iso(debut),
+    ]);
     return rows.isEmpty ? null : rows.first['id'] as int?;
   }
 

@@ -50,3 +50,12 @@ app.*.map.json
 # Clés EmailJS (ne jamais pousser)
 /emailjs.json
 /assets/config/emailjs.json
+
+# Clés Cloudflare Turnstile (captcha) : ne jamais pousser la clé secrète
+/assets/config/turnstile.json
+
+# Clé de l'API Google Gemini (lecture de la CIN) : ne jamais pousser
+/assets/config/gemini.json
+
+# Rapports de compilation Gradle (générés)
+/android/build/

@@ -93,4 +93,10 @@ extension RolePermissions on Role {
   bool get supprimerPatients => this == Role.admin;
 
   bool get voirStats => this == Role.admin || this == Role.medecin;
+
+  /// Valider ou refuser les demandes de congé.
+  bool get validerConges => this == Role.admin;
+
+  /// Demander un congé pour soi.
+  bool get demanderConges => this == Role.medecin || this == Role.infirmier;
 }

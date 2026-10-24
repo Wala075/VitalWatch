@@ -9,6 +9,7 @@ import '../../../../shared_providers/session.dart';
 import '../../data/local_auth_repository.dart';
 import '../../domain/auth_repository.dart';
 import '../../../../core/widgets/error_banner.dart';
+import '../widgets/captcha_turnstile.dart';
 import '../widgets/login_header.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -27,6 +28,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _mdpVisible = false;
   bool _chargement = false;
   String? _erreur;
+
+  // Captcha à chaque connexion : un jeton ne sert qu'une fois, la clé du
+  // widget change après chaque essai pour en obtenir un nouveau.
+  String? _jetonCaptcha;
+  int _captchaVersion = 0;
+
+  bool get _attenteCaptcha => _jetonCaptcha == null;
 
   @override
   void dispose() {
@@ -48,13 +56,18 @@ class _LoginScreenState extends State<LoginScreen> {
       final utilisateur = await _authRepository.login(
         email: _emailCtrl.text,
         motDePasse: _mdpCtrl.text,
+        jetonCaptcha: _jetonCaptcha,
       );
       Session.utilisateur = utilisateur;
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, AppRoutes.home);
     } on AuthException catch (e) {
       if (!mounted) return;
-      setState(() => _erreur = e.message);
+      setState(() {
+        _erreur = e.message;
+        _jetonCaptcha = null;
+        _captchaVersion++;
+      });
     } finally {
       if (mounted) {
         setState(() => _chargement = false);
@@ -62,6 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Captcha toujours exigé avant l'envoi d'un nouveau mot de passe.
   Future<void> _motDePasseOublie() async {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     final String email = _emailCtrl.text.trim();
@@ -75,8 +89,16 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    try {
-      await _authRepository.reinitialiserMotDePasse(email);
+    final bool? envoye = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _FeuilleReinitialisation(
+        email: email,
+        depot: _authRepository,
+      ),
+    );
+    if (envoye == true) {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
@@ -85,8 +107,6 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       );
-    } on AuthException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -108,7 +128,7 @@ class _LoginScreenState extends State<LoginScreen> {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
                 child: Column(
@@ -124,7 +144,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         borderRadius: BorderRadius.circular(24),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(24),
+                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
                         child: AutofillGroup(
                           child: Form(
                             key: _formKey,
@@ -191,15 +211,29 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
+                                Center(
+                                  child: CaptchaTurnstile(
+                                    key: ValueKey<int>(_captchaVersion),
+                                    onJeton: (String jeton) =>
+                                        setState(() => _jetonCaptcha = jeton),
+                                    onErreur: (String message) => setState(
+                                      () => _erreur = 'Captcha : $message',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
                                 if (_erreur != null) ...[
                                   ErrorBanner(message: _erreur!),
                                   const SizedBox(height: 16),
                                 ],
                                 PrimaryButton(
-                                  label: 'Se connecter',
+                                  label: _attenteCaptcha
+                                      ? "Cochez d'abord le captcha"
+                                      : 'Se connecter',
                                   icon: Icons.login,
                                   loading: _chargement,
-                                  onPressed: _seConnecter,
+                                  onPressed:
+                                      _attenteCaptcha ? null : _seConnecter,
                                 ),
                               ],
                             ),
@@ -221,6 +255,100 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// « Mot de passe oublié » : captcha puis envoi d'un nouveau mot de passe.
+class _FeuilleReinitialisation extends StatefulWidget {
+  const _FeuilleReinitialisation({required this.email, required this.depot});
+
+  final String email;
+  final AuthRepository depot;
+
+  @override
+  State<_FeuilleReinitialisation> createState() =>
+      _FeuilleReinitialisationState();
+}
+
+class _FeuilleReinitialisationState extends State<_FeuilleReinitialisation> {
+  String? _jeton;
+  int _version = 0;
+  bool _envoi = false;
+  String? _erreur;
+
+  Future<void> _envoyer() async {
+    setState(() {
+      _envoi = true;
+      _erreur = null;
+    });
+    try {
+      await widget.depot.reinitialiserMotDePasse(
+        widget.email,
+        jetonCaptcha: _jeton ?? '',
+      );
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _erreur = e.message;
+        _jeton = null;
+        _version++;
+      });
+    } finally {
+      if (mounted) setState(() => _envoi = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String? erreur = _erreur;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        24,
+        0,
+        24,
+        24 + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Mot de passe oublié',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Un nouveau mot de passe sera envoyé à ${widget.email}.',
+            style: const TextStyle(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: CaptchaTurnstile(
+              key: ValueKey<int>(_version),
+              onJeton: (String jeton) => setState(() => _jeton = jeton),
+              onErreur: (String message) =>
+                  setState(() => _erreur = 'Captcha : $message'),
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (erreur != null) ...[
+            ErrorBanner(message: erreur),
+            const SizedBox(height: 16),
+          ],
+          PrimaryButton(
+            label: _jeton == null ? "Cochez d'abord le captcha" : 'Envoyer',
+            icon: Icons.send_rounded,
+            loading: _envoi,
+            onPressed: _jeton == null ? null : _envoyer,
+          ),
+        ],
       ),
     );
   }

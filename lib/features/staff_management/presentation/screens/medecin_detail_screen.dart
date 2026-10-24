@@ -8,10 +8,12 @@ import '../../../../models/medecin.dart';
 import '../../../../models/patient.dart';
 import '../../../../models/service.dart';
 import '../../../../models/utilisateur.dart';
+import '../../data/conge_repository.dart';
 import '../../data/horaire_repository.dart';
 import '../../data/medecin_repository.dart';
 import '../../data/patient_repository.dart';
 import '../../data/service_repository.dart';
+import '../../domain/conges.dart';
 import '../../domain/disponibilite.dart';
 import '../../domain/sante_simulee.dart';
 import '../../domain/staff_manager.dart';
@@ -45,6 +47,9 @@ class _MedecinDetailScreenState extends State<MedecinDetailScreen> {
   String? _serviceNom;
   List<Creneau> _creneaux = [];
   List<Patient> _patients = [];
+
+  /// Congés validés ou en attente, en cours ou à venir.
+  List<Conge> _conges = [];
   bool _chargement = true;
   bool _occupe = false;
 
@@ -69,12 +74,22 @@ class _MedecinDetailScreenState extends State<MedecinDetailScreen> {
         await HoraireRepository().parMedecin(widget.medecinId);
     final List<Patient> patients =
         await PatientRepository().parMedecin(widget.medecinId);
+    final List<Conge> conges = await CongeRepository().dePersonne(
+      Role.medecin,
+      widget.medecinId,
+      statuts: const [StatutConge.validee, StatutConge.enAttente],
+    );
+    final DateTime aujourdHui = RegleConges.jour(DateTime.now());
     if (!mounted) return;
     setState(() {
       _medecin = m;
       _serviceNom = service?.nom;
       _creneaux = creneaux;
       _patients = patients;
+      _conges = [
+        for (final Conge c in conges)
+          if (!RegleConges.jour(c.fin).isBefore(aujourdHui)) c,
+      ];
       _chargement = false;
     });
   }
@@ -170,7 +185,19 @@ class _MedecinDetailScreenState extends State<MedecinDetailScreen> {
 
   Widget _contenu(Medecin m, bool gerer) {
     final DateTime maintenant = DateTime.now();
-    final Disponibilite dispo = Disponibilite.calculer(m, _creneaux, maintenant);
+    DateTime? congeJusquau;
+    for (final Conge c in _conges) {
+      if (c.statut == StatutConge.validee &&
+          RegleConges.couvre(c.debut, c.fin, maintenant)) {
+        congeJusquau = c.fin;
+      }
+    }
+    final Disponibilite dispo = Disponibilite.calculer(
+      m,
+      _creneaux,
+      maintenant,
+      congeJusquau: congeJusquau,
+    );
     final List<(Patient, Evaluation)> suivis = [
       for (final Patient p in _patients) (p, SanteSimulee.evaluerPatient(p)),
     ]..sort((a, b) => b.$2.niveau.index.compareTo(a.$2.niveau.index));
@@ -296,6 +323,37 @@ class _MedecinDetailScreenState extends State<MedecinDetailScreen> {
         CarteBlanche(
           child: _SemaineMedecin(creneaux: _creneaux, maintenant: maintenant),
         ),
+
+        // ------------------------------------------------------- congés
+        if (_conges.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          const SectionHeader(titre: 'Congés'),
+          const SizedBox(height: 12),
+          CarteBlanche(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Column(
+              children: [
+                for (final Conge c in _conges)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      c.statut == StatutConge.validee
+                          ? Icons.event_busy_rounded
+                          : Icons.hourglass_top_rounded,
+                      color: c.statut == StatutConge.validee
+                          ? AppColors.danger
+                          : AppColors.warning,
+                    ),
+                    title: Text(
+                      '${Formatters.date(c.debut)} → ${Formatters.date(c.fin)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text('${c.type.libelle} · ${c.statut.libelle}'),
+                  ),
+              ],
+            ),
+          ),
+        ],
 
         // ------------------------------------------------------ patients
         const SizedBox(height: 24),
