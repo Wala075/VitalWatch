@@ -50,3 +50,6 @@ app.*.map.json
 # Clés EmailJS (ne jamais pousser)
 /emailjs.json
 /assets/config/emailjs.json
+
+# Module 4 : clé Gemini (résumé IA)
+assets/config/gemini.json

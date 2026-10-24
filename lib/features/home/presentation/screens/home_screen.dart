@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../../models/utilisateur.dart';
+import '../../../appointments/presentation/screens/tabs/rdv_patient_tab.dart';
+import '../../../appointments/presentation/widgets/appel_urgent_watcher.dart';
 import '../../../../shared_providers/session.dart';
 import '../../data/demo_store.dart';
 import '../widgets/app_background.dart';
@@ -44,13 +46,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final Role? role = Session.utilisateur?.role;
+    final Utilisateur? u = Session.utilisateur;
+    final Role? role = u?.role;
     final bool personnel = role != null && role != Role.patient;
+    final bool patient = u != null && role == Role.patient;
 
     final List<Widget> pages = [
       const HomeTab(),
       const DoctorsTab(),
-      const ScheduleTab(),
+      // Patient : vrais RDV du module 4 (type présentiel / visio + urgence).
+      if (u != null && patient) RdvPatientTab(utilisateur: u) else const ScheduleTab(),
       const HealthTab(),
       if (personnel) const GestionTab(),
     ];
@@ -60,7 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
       NavItem(
         Icons.calendar_month_rounded,
         'Planning',
-        badge: _store.aVenir.length,
+        badge: patient ? 0 : _store.aVenir.length,
       ),
       const NavItem(Icons.monitor_heart_rounded, 'Santé'),
       if (personnel) const NavItem(Icons.dashboard_customize_rounded, 'Gestion'),
@@ -69,13 +74,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       extendBody: true,
-      body: AppBackground(
-        child: IndexedStack(
-          index: index,
-          children: [
-            for (int i = 0; i < pages.length; i++)
-              TickerMode(enabled: i == index, child: pages[i]),
-          ],
+      // Médecin : sonne quand un patient fait une demande urgente (module 4).
+      body: AppelUrgentWatcher(
+        child: AppBackground(
+          child: IndexedStack(
+            index: index,
+            children: [
+              for (int i = 0; i < pages.length; i++)
+                TickerMode(enabled: i == index, child: pages[i]),
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: FloatingNavBar(

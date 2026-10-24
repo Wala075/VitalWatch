@@ -42,6 +42,19 @@ dependencies:
   # Envoi des identifiants par mail (API REST EmailJS)
   http: ^1.6.0
 
+  # Module 4 : Rendez-vous & Téléconsultation
+  url_launcher: ^6.3.1   # ouvrir la visio Jitsi et Google Calendar
+  pdf: ^3.11.3           # compte-rendu en PDF
+  printing: ^5.14.2      # partage / impression du PDF
+  webview_flutter: ">=4.10.0 <6.0.0"          # appel vidéo Jitsi DANS l'app
+  webview_flutter_android: ">=4.0.0 <6.0.0"   # son/vidéo automatiques dans la WebView
+  permission_handler: 11.4.0                  # caméra + micro (version figée : les suivantes exigent Android SDK 37)
+
+# Module 4 : la dernière version de permission_handler_android exige
+# compileSdk 37, non supporté par notre Android Gradle Plugin 9.1 (max 36).
+dependency_overrides:
+  permission_handler_android: 12.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
